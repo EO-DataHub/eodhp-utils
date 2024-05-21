@@ -56,5 +56,3 @@ jobs:
 #          indicators: true
 #          output: both
 #          thresholds: "60 80"
-
-pip install pytest-cov
