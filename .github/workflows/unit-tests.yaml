@@ -30,16 +30,31 @@ jobs:
       - name: Run tests
         run: pytest ./tests -vv
 
-      - name: Code Coverage Report
-        uses: irongut/CodeCoverageSummary@v1.3.0
-        with:
-          filename: coverage/**/coverage.cobertura.xml
-          badge: true
-          fail_below_min: true
-          format: markdown
-          hide_branch_rate: false
-          hide_complexity: true
-          indicators: true
-          output: both
-          thresholds: "60 80"
+      - name: Code Coverage
+        run: |
+          coverage run -m pytest
+          echo COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}') >> "$GITHUB_ENV"
+          echo COVERAGE=${COVERAGE_PERCENT%\%} "$GITHUB_ENV"
 
+      - name: Coverage Check
+        if: ${{ COVERAGE }} < $100
+        uses: actions/github-script@v3
+        with:
+          script: |
+              core.setFailed('Not enough code coverage')
+          
+
+#      - name: Code Coverage Report
+#        uses: irongut/CodeCoverageSummary@v1.3.0
+#        with:
+#          filename: coverage/**/coverage.cobertura.xml
+#          badge: true
+#          fail_below_min: true
+#          format: markdown
+#          hide_branch_rate: false
+#          hide_complexity: true
+#          indicators: true
+#          output: both
+#          thresholds: "60 80"
+
+pip install pytest-cov
