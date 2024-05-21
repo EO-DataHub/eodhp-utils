@@ -40,7 +40,7 @@ jobs:
           echo COVERAGE=${COVERAGE_PERCENT%\%} "$GITHUB_ENV"
 
       - name: Coverage Check
-        if: ${{ COVERAGE }} < $100
+        if: $COVERAGE < $100
         uses: actions/github-script@v3
         with:
           script: |
