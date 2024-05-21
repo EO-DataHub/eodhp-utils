@@ -1,6 +1,6 @@
 .PHONY: dockerbuild dockerpush test testonce ruff pylint black lint
 VERSION ?= latest
-IMAGENAME = CHANGEME-component-name
+IMAGENAME = eodhp-utils
 DOCKERREPO ?= 312280911266.dkr.ecr.eu-west-2.amazonaws.com
 
 dockerbuild:
@@ -11,13 +11,13 @@ dockerpush: dockerbuild testdocker
 	docker push ${DOCKERREPO}/${IMAGENAME}:${VERSION}
 
 test:
-	./venv/bin/ptw CHANGEME-test-package-names
+	./venv/bin/ptw tests
 
 testonce:
 	./venv/bin/pytest
 
 pylint:
-	./venv/bin/pylint CHANGEME-package-names
+	./venv/bin/pylint eodhp-utils
 
 ruff:
 	./venv/bin/ruff .

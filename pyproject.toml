@@ -13,9 +13,9 @@
 # limitations under the License.
 
 [project]
-name = "CHANGEME-component-name"
+name = "eodhp-utils"
 version = "0.1.0"
-description = "CHANGEME a short description"
+description = "Utilities for use on EODHP"
 readme = "README.md"
 
 # Our target version is Python 3.11, but it may work with earlier versions.
@@ -27,11 +27,11 @@ license = {file = "LICENSE"}
 # authored the project, and a valid email address corresponding to the name
 # listed.
 authors = [
-  {name = "Telespazio UK Ltd", email = "CHANGEME-alex.hayward@telespazio.com" }
+  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
 
 maintainers = [
-  {name = "Telespazio UK Ltd", email = "CHANGEME-alex.hayward@telespazio.com" }
+  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
 
 # Classifiers help users find your project by categorizing it.
@@ -48,7 +48,6 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
 
-  # CHANGEME Pick your license as you wish
   "License :: OSI Approved :: Apache Software License",
   # "License :: Other/Proprietary License",
 
@@ -64,6 +63,7 @@ classifiers = [
 # For an analysis of this field vs pip's requirements files see:
 # https://packaging.python.org/discussions/install-requires-vs-requirements/
 dependencies = [
+    "jsonschema~=3.2.0",
 ]
 
 # List additional groups of dependencies here (e.g. development
@@ -89,8 +89,8 @@ dev = ["pip-tools", "pytest", "pytest-xdist", "pytest-mock", "pytest-watcher", "
 # what's used to render the link text on PyPI.
 [project.urls]  # Optional
 homepage = "https://github.com/UKEODHP/"
-repository = "CHANGEME-https://github.com/UKEODHP/..."
-changelog = "CHANGEME-https://github.com/UKEODHP/.../master/CHANGELOG.md"
+repository = "https://github.com/UKEODHP/eodhp-utils"
+changelog = "https://github.com/UKEODHP/eodhp-utils/master/CHANGELOG.md"
 
 [build-system]
 # These are the assumed default build requirements from pip:
@@ -105,7 +105,7 @@ markers = [
 ]
 
 [tool.setuptools]
-packages = ["CHANGEME-pythonpkgname"]
+packages = []
 
 [tool.black]
 line-length = 100

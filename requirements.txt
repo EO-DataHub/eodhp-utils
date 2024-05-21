@@ -4,3 +4,14 @@
 #
 #    pip-compile
 #
+attrs==23.2.0
+    # via jsonschema
+jsonschema==3.2.0
+    # via eodhp-utils (pyproject.toml)
+pyrsistent==0.20.0
+    # via jsonschema
+six==1.16.0
+    # via jsonschema
+
+# The following packages are considered to be unsafe in a requirements file:
+# setuptools
