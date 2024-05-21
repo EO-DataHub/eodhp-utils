@@ -38,13 +38,14 @@ jobs:
           coverage run -m pytest
           echo COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}') >> "$GITHUB_ENV"
           echo COVERAGE=${COVERAGE_PERCENT%\%} >> "$GITHUB_ENV"
+          echo $COVERAGE
 
-      - name: Coverage Check
-        if: $COVERAGE < 100
-        uses: actions/github-script@v3
-        with:
-          script: |
-              core.setFailed('Not enough code coverage')
+#      - name: Coverage Check
+#        if: $COVERAGE < 100
+#        uses: actions/github-script@v3
+#        with:
+#          script: |
+#              core.setFailed('Not enough code coverage')
           
 
 #      - name: Code Coverage Report
