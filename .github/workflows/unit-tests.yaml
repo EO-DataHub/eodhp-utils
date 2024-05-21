@@ -37,10 +37,10 @@ jobs:
         run: |
           coverage run -m pytest
           echo COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}') >> "$GITHUB_ENV"
-          echo COVERAGE=${COVERAGE_PERCENT%\%} "$GITHUB_ENV"
+          echo COVERAGE=${COVERAGE_PERCENT%\%} >> "$GITHUB_ENV"
 
       - name: Coverage Check
-        if: $COVERAGE < $100
+        if: $COVERAGE < 100
         uses: actions/github-script@v3
         with:
           script: |
