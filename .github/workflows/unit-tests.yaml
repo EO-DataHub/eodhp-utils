@@ -37,24 +37,13 @@ jobs:
         run: |
           coverage run -m pytest
           coverage report
-          echo 'BBBBBBBBBBBBBBBBBBBBB'
-          echo $(coverage report | awk 'END{print}')
-          echo DDDDDDDDDDDDDDDDDDDDd
-          echo $(coverage report | awk 'END{print $4}')
-          
-          echo 'CCCCCCCCCCCCCCCCCCC'
           COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}')
-          echo $COVERAGE_PERCENT
           COVERAGE=${COVERAGE_PERCENT%\%}
-          echo 'eeeeeeeeeeeeeeeeeeeeeee'
-          echo $COVERAGE
-          
           echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
-          echo 'AAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
       - name: Coverage Check
         run: |
-          if (( $(echo "$COVERAGE < 200" | awk '{print ($1 < 200)}' ) )); then
+          if (( $(echo "$COVERAGE < 100" | awk '{print ($1 < 100)}' ) )); then
             echo "Code coverage is $COVERAGE% and below expected level"
             exit 1
           else
