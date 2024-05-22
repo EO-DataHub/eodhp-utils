@@ -1,5 +1,5 @@
 # Copyright 2024 Telespazio UK Ltd
-#    
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -27,33 +27,33 @@ license = {file = "LICENSE"}
 # authored the project, and a valid email address corresponding to the name
 # listed.
 authors = [
-  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
+ {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
 
 maintainers = [
-  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
+ {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
 
 # Classifiers help users find your project by categorizing it.
 #
 # For a list of valid classifiers, see https://pypi.org/classifiers/
 classifiers = [
-  # How mature is this project? Common values are
-  #   3 - Alpha
-  #   4 - Beta
-  #   5 - Production/Stable
-  "Development Status :: 3 - Alpha",
+ # How mature is this project? Common values are
+ #   3 - Alpha
+ #   4 - Beta
+ #   5 - Production/Stable
+ "Development Status :: 3 - Alpha",
 
-  # Indicate who your project is intended for
-  "Intended Audience :: Science/Research",
-  "Intended Audience :: Developers",
+ # Indicate who your project is intended for
+ "Intended Audience :: Science/Research",
+ "Intended Audience :: Developers",
 
-  "License :: OSI Approved :: Apache Software License",
-  # "License :: Other/Proprietary License",
+ "License :: OSI Approved :: Apache Software License",
+ # "License :: Other/Proprietary License",
 
-  "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3 :: Only",
+ "Programming Language :: Python :: 3",
+ "Programming Language :: Python :: 3.11",
+ "Programming Language :: Python :: 3 :: Only",
 ]
 
 # This field lists other packages that your project depends on to run.
@@ -63,7 +63,7 @@ classifiers = [
 # For an analysis of this field vs pip's requirements files see:
 # https://packaging.python.org/discussions/install-requires-vs-requirements/
 dependencies = [
-    "jsonschema~=3.2.0",
+   "jsonschema~=3.2.0",
 ]
 
 # List additional groups of dependencies here (e.g. development
@@ -98,16 +98,16 @@ changelog = "https://github.com/UKEODHP/eodhp-utils/master/CHANGELOG.md"
 requires = ["setuptools>=69.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[options]
+packages = ["eodhp_utils", "eodhp_utils.pulsar"]
+include_package_data = true
+install_requires = ["jsonschema~=3.2.0"]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [
-  "integrationtest: Integration test"
+ "integrationtest: Integration test"
 ]
-
-[tool.setuptools]
-packages = ["eodhp_utils"]
-package-dir = {"" = "."}
-
 
 [tool.black]
 line-length = 100
@@ -119,34 +119,34 @@ target-version = "py311"
 select = ["E", "F", "B", "W"]
 
 exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
+   ".bzr",
+   ".direnv",
+   ".eggs",
+   ".git",
+   ".git-rewrite",
+   ".hg",
+   ".mypy_cache",
+   ".nox",
+   ".pants.d",
+   ".pytype",
+   ".ruff_cache",
+   ".svn",
+   ".tox",
+   ".venv",
+   "__pypackages__",
+   "_build",
+   "buck-out",
+   "build",
+   "dist",
+   "node_modules",
+   "venv",
 ]
 
 [tool.pylint.'MESSAGES CONTROL']
 disable = '''
-    line-too-long,
-    missing-class-docstring, 
-    too-many-locals, 
-    too-many-instance-attributes,
-    logging-fstring-interpolation,
+   line-too-long,
+   missing-class-docstring,
+   too-many-locals,
+   too-many-instance-attributes,
+   logging-fstring-interpolation,
 '''
