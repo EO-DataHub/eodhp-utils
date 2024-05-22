@@ -39,6 +39,7 @@ jobs:
           coverage report
           echo 'BBBBBBBBBBBBBBBBBBBBB'
           echo $(coverage report | awk 'END{print}')
+          echo DDDDDDDDDDDDDDDDDDDDd
           echo coverage report | awk 'END{print $4}'
           
           echo 'CCCCCCCCCCCCCCCCCCC'
