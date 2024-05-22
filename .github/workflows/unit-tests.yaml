@@ -8,6 +8,7 @@ on:
 
 env:
   COVERAGE: 0
+  COVERAGE_PERCENT: 0%
 
 jobs:
   unit-testing:
@@ -43,7 +44,7 @@ jobs:
           echo $(coverage report | awk 'END{print $4}')
           
           echo 'CCCCCCCCCCCCCCCCCCC'
-          echo `COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}')` >> "$GITHUB_ENV"
+          echo "COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}')" >> "$GITHUB_ENV"
           echo $COVERAGE_PERCENT
           echo COVERAGE=${COVERAGE_PERCENT%\%} >> "$GITHUB_ENV"
           echo $COVERAGE
