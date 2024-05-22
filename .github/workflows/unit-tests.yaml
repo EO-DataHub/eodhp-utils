@@ -38,7 +38,7 @@ jobs:
           coverage run -m pytest
           coverage report
           echo 'BBBBBBBBBBBBBBBBBBBBB'
-          echo coverage report | awk 'END{print}'
+          echo $(coverage report | awk 'END{print}')
           echo coverage report | awk 'END{print $4}'
           
           echo 'CCCCCCCCCCCCCCCCCCC'
