@@ -106,6 +106,8 @@ markers = [
 
 [tool.setuptools]
 packages = ["eodhp_utils"]
+package-dir = {"" = "."}
+
 
 [tool.black]
 line-length = 100
