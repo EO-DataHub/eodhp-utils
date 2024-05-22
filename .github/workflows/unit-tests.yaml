@@ -46,7 +46,7 @@ jobs:
           COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}')
           echo $COVERAGE_PERCENT
           COVERAGE=${COVERAGE_PERCENT%\%}
-          echo 'eeeeeeeeeeeeeeeeeeeeeee
+          echo 'eeeeeeeeeeeeeeeeeeeeeee'
           echo $COVERAGE
           
           echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
