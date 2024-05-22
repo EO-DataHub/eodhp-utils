@@ -18,10 +18,10 @@ dependencies = [
     "jsonschema~=3.2.0",
 ]
 
-[tool.setuptools]
+[options]
 packages = ["eodhp_utils", "eodhp_utils.pulsar"]
-#include_package_data = true
-
+include_package_data = true
+install_requires = ["jsonschema~=3.2.0"]
 
 ## Copyright 2024 Telespazio UK Ltd
 ##
