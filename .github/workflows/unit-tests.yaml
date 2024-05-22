@@ -40,6 +40,16 @@ jobs:
           echo COVERAGE=${COVERAGE_PERCENT%\%} >> "$GITHUB_ENV"
           echo $COVERAGE
 
+      - name: Coverage Check
+        run: |
+          if (( $(echo "$COVERAGE < 100" | bc -1 ) )); then
+            echo "Code coverage is $COVERAGE% and below expected level"
+            exit 1
+          else
+            echo "Sufficient code coverage"
+          fi
+          
+
 #      - name: Coverage Check
 #        if: $COVERAGE < 100
 #        uses: actions/github-script@v3
