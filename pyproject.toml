@@ -106,7 +106,7 @@ markers = [
 
 [tool.setuptools]
 packages = ["eodhp_utils"]
-package-dir = {"" = ""}
+package-dir = {"" = "eodhp_utils"}
 
 
 [tool.black]
