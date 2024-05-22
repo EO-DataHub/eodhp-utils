@@ -14,9 +14,8 @@ pip install "git+https://github.com/UKEODHP/eodhp-utils.git@va.b.c"
 ```
 
 2. Import
-
 ```python
-from src.eodhp_utils.pulsar.messages import generate_harvest_schema
+from eodhp_utils.pulsar.messages import generate_harvest_schema
 
 print(generate_harvest_schema())
 ```
