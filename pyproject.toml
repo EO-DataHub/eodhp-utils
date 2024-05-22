@@ -20,7 +20,7 @@ dependencies = [
 
 [tool.setuptools]
 packages = ["eodhp_utils", "eodhp_utils.pulsar"]
-include_package_data = true
+#include_package_data = true
 
 
 ## Copyright 2024 Telespazio UK Ltd
