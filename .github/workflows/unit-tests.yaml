@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: 3.11
           cache: 'pip'
-          cache-dependency-path: 'eodhp_web_presence/*.txt'
+          cache-dependency-path: 'eodhp-utils/*.txt'
 
       - name: Install dependencies
         run: |
@@ -42,7 +42,7 @@ jobs:
 
       - name: Coverage Check
         run: |
-          if (( $(echo "$COVERAGE < 100" | bc -1 ) )); then
+          if (( $(echo "$COVERAGE < 100" | bc -l ) )); then
             echo "Code coverage is $COVERAGE% and below expected level"
             exit 1
           else
