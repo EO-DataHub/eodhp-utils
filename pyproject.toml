@@ -106,7 +106,7 @@ markers = [
 
 [tool.setuptools]
 packages = ["src"]
-package-dir = {"" = "src"}
+package-dir = {"" = "."}
 
 
 [tool.black]
