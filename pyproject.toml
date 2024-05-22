@@ -103,8 +103,10 @@ markers = [
   "integrationtest: Integration test"
 ]
 
-[tool.setuptools.packages]
-find = {}
+[tool.setuptools.packages.find]
+where = ["eodhp_utils"]
+exclude = ["additional*"]
+namespaces = false
 #packages = ["eodhp_utils"]
 #package-dir = {"" = "eodhp_utils"}
 
