@@ -108,8 +108,6 @@ markers = [
 packages = ["eodhp_utils"]
 package-dir = {"" = "eodhp_utils"}
 
-[tool.setuptools.packages.find]
-where = ["eodhp_utils"]
 
 [tool.black]
 line-length = 100
