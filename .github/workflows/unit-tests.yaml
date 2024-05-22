@@ -48,6 +48,7 @@ jobs:
           COVERAGE=${COVERAGE_PERCENT%\%}
           echo 'eeeeeeeeeeeeeeeeeeeeeee
           echo $COVERAGE
+          
           echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
           echo 'AAAAAAAAAAAAAAAAAAAAAAAAAAAA'
 
