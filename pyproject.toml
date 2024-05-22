@@ -105,7 +105,7 @@ markers = [
 ]
 
 [tool.setuptools]
-packages = []
+packages = ["eodhp-utils"]
 
 [tool.black]
 line-length = 100
