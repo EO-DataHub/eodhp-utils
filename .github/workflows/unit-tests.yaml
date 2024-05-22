@@ -37,7 +37,7 @@ jobs:
         run: |
           coverage run -m pytest
           echo COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}') >> "$GITHUB_ENV"
-          echo COVERAGE=${COVERAGE_PERCENT\%} >> "$GITHUB_ENV"
+          echo COVERAGE=${COVERAGE_PERCENT%\%} >> "$GITHUB_ENV"
           echo $COVERAGE_PERCENT
           echo $COVERAGE
 
