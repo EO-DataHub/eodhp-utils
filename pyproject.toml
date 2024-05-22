@@ -106,7 +106,7 @@ markers = [
 
 [tool.setuptools]
 packages = ["eodhp_utils"]
-package-dir = {"" = "pulsar"}
+package-dir = {"" = ""}
 
 
 [tool.black]
