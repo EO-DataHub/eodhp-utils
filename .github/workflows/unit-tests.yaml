@@ -42,7 +42,7 @@ jobs:
 
       - name: Coverage Check
         run: |
-          if (( $(echo "$COVERAGE < 100" | bc -l ) )); then
+          if (( $(echo "$COVERAGE < 200" | bc -l ) )); then
             echo "Code coverage is $COVERAGE% and below expected level"
             exit 1
           else
