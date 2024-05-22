@@ -40,7 +40,7 @@ jobs:
           echo 'BBBBBBBBBBBBBBBBBBBBB'
           echo $(coverage report | awk 'END{print}')
           echo DDDDDDDDDDDDDDDDDDDDd
-          echo coverage report | awk 'END{print $4}'
+          echo $(coverage report | awk 'END{print $4}')
           
           echo 'CCCCCCCCCCCCCCCCCCC'
           echo COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}') >> "$GITHUB_ENV"
