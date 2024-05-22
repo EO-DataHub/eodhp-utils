@@ -103,9 +103,10 @@ markers = [
   "integrationtest: Integration test"
 ]
 
-[tool.setuptools]
+[tool.setuptools.packages]
+find = {}
 #packages = ["eodhp_utils"]
-package-dir = {"" = "eodhp_utils"}
+#package-dir = {"" = "eodhp_utils"}
 
 [tool.black]
 line-length = 100
