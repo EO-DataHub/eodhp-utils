@@ -106,7 +106,7 @@ install_requires = ["jsonschema~=3.2.0"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 markers = [
- "integrationtest: Integration test"
+  "integrationtest: Integration test"
 ]
 
 [tool.black]
