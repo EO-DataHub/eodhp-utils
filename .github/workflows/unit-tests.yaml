@@ -1,0 +1,51 @@
+name: Unit tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  COVERAGE: 0
+
+jobs:
+  unit-testing:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          cache: 'pip'
+          cache-dependency-path: 'eodhp-utils/*.txt'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -r requirements.txt
+
+      - name: Run tests
+        run: pytest ./tests -vv
+
+      - name: Code Coverage
+        run: |
+          coverage run -m pytest
+          coverage report
+          COVERAGE_PERCENT=$(coverage report | awk 'END{print $4}')
+          COVERAGE=${COVERAGE_PERCENT%\%}
+          echo "COVERAGE=$COVERAGE" >> "$GITHUB_ENV"
+
+      - name: Coverage Check
+        run: |
+          if (( $(echo "$COVERAGE < 100" | awk '{print ($1 < 100)}' ) )); then
+            echo "Code coverage is $COVERAGE% and below expected level"
+            exit 1
+          else
+            echo "Sufficient code coverage"
+          fi
