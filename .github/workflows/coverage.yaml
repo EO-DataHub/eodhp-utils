@@ -1,4 +1,4 @@
-name: Unit tests
+name: Code coverage
 
 on:
   push:
