@@ -5,13 +5,18 @@
 #    pip-compile
 #
 attrs==23.2.0
-    # via jsonschema
-jsonschema==3.2.0
+    # via
+    #   jsonschema
+    #   referencing
+jsonschema==4.23.0
     # via eodhp-utils (pyproject.toml)
-pyrsistent==0.20.0
+jsonschema-specifications==2023.12.1
     # via jsonschema
-six==1.16.0
-    # via jsonschema
-
-# The following packages are considered to be unsafe in a requirements file:
-# setuptools
+referencing==0.35.1
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+rpds-py==0.19.1
+    # via
+    #   jsonschema
+    #   referencing
