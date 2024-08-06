@@ -5,7 +5,9 @@
 #    pip-compile --extra=dev --output-file=requirements-dev.txt
 #
 attrs==23.2.0
-    # via jsonschema
+    # via
+    #   jsonschema
+    #   referencing
 black==24.4.2
     # via eodhp-utils (pyproject.toml)
 build==1.2.1
@@ -30,8 +32,10 @@ iniconfig==2.0.0
     # via pytest
 isort==5.13.2
     # via eodhp-utils (pyproject.toml)
-jsonschema==3.2.0
+jsonschema==4.23.0
     # via eodhp-utils (pyproject.toml)
+jsonschema-specifications==2023.12.1
+    # via jsonschema
 mypy-extensions==1.0.0
     # via black
 nodeenv==1.9.1
@@ -57,8 +61,6 @@ pyproject-hooks==1.1.0
     # via
     #   build
     #   pip-tools
-pyrsistent==0.20.0
-    # via jsonschema
 pytest==8.3.2
     # via
     #   eodhp-utils (pyproject.toml)
@@ -72,10 +74,16 @@ pytest-xdist==3.6.1
     # via eodhp-utils (pyproject.toml)
 pyyaml==6.0.1
     # via pre-commit
+referencing==0.35.1
+    # via
+    #   jsonschema
+    #   jsonschema-specifications
+rpds-py==0.19.1
+    # via
+    #   jsonschema
+    #   referencing
 ruff==0.5.5
     # via eodhp-utils (pyproject.toml)
-six==1.16.0
-    # via jsonschema
 virtualenv==20.26.3
     # via pre-commit
 watchdog==4.0.1
