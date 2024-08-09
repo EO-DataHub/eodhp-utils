@@ -113,7 +113,7 @@ requires = ["setuptools>=69.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [options]
-packages = ["eodhp_utils", "eodhp_utils.pulsar"]
+packages = ["eodhp_utils", "eodhp_utils.pulsar", "eodhp_utils.aws"]
 include_package_data = true
 install_requires = ["jsonschema~=3.2.0"]
 
