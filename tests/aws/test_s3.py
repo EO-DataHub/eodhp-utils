@@ -54,7 +54,7 @@ def test_upload_file_s3__error(caplog, mock_bucket_name):
         assert "File upload failed" in caplog.text
 
 
-def test_get_file_s3(mock_bucket_name):
+def test_get_file_s3__success(mock_bucket_name):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
         body = "file contents"
         file_name = "s3.txt"
@@ -92,7 +92,7 @@ def test_get_file_s3__error(caplog, mock_bucket_name):
         assert "File retrieval failed" in caplog.text
 
 
-def test_delete_file_s3(mock_bucket_name, monkeypatch):
+def test_delete_file_s3__success(mock_bucket_name, monkeypatch):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
