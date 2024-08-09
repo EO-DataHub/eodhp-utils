@@ -1,5 +1,11 @@
 # eodhp-utils
 
+## Contents
+Contains functions for:
+- AWS
+  - S3
+- Pulsar
+
 ## Importing
 This package may be used as follows:
 
@@ -19,3 +25,21 @@ from eodhp_utils.pulsar.messages import generate_harvest_schema
 
 print(generate_harvest_schema())
 ```
+
+
+## Install locally via makefile
+
+```commandline
+make setup
+```
+
+This will create a virtual environment called `venv`, build `requirements.txt` and
+`requirements-dev.txt` from `pyproject.toml` if they're out of date, install the Python
+and Node dependencies and install `pre-commit`.
+
+It's safe and fast to run `make setup` repeatedly as it will only update these things if
+they have changed.
+
+After `make setup` you can run `pre-commit` to run pre-commit checks on staged changes and
+`pre-commit run --all-files` to run them on all files. This replicates the linter checks that
+run from GitHub actions.

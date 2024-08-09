@@ -63,7 +63,9 @@ classifiers = [
 # For an analysis of this field vs pip's requirements files see:
 # https://packaging.python.org/discussions/install-requires-vs-requirements/
 dependencies = [
-   "jsonschema",
+    "jsonschema",
+    "botocore",
+    "boto3"
 ]
 
 # List additional groups of dependencies here (e.g. development
@@ -75,7 +77,19 @@ dependencies = [
 # Similar to `dependencies` above, these must be valid existing
 # projects.
 [project.optional-dependencies] # Optional
-dev = ["pip-tools", "pytest", "pytest-xdist", "pytest-mock", "pytest-watcher", "black", "ruff", "coverage", "isort", "pre-commit"]
+dev = [
+    "pip-tools",
+    "pytest",
+    "pytest-xdist",
+    "pytest-mock",
+    "pytest-watcher",
+    "black",
+    "ruff",
+    "coverage",
+    "isort",
+    "pre-commit",
+    "moto"
+]
 
 # List URLs that are relevant to your project
 #
