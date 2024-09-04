@@ -1,7 +1,7 @@
 .PHONY: dockerbuild dockerpush test testonce ruff black lint isort pre-commit-check requirements-update requirements setup
 VERSION ?= latest
 IMAGENAME = eodhp-utils
-DOCKERREPO ?= public.ecr.aws/n1b3o1k2/ukeodhp
+DOCKERREPO ?= public.ecr.aws/n1b3o1k2
 
 test:
 	./venv/bin/ptw
