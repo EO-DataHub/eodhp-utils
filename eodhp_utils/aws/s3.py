@@ -1,7 +1,9 @@
 import logging
 import os
+
 import boto3
 from botocore.exceptions import ClientError
+
 
 class S3Client:
     def __init__(self):
@@ -24,7 +26,6 @@ class S3Client:
         except ClientError as e:
             logging.error(f"File upload failed: {e}")
 
-
     def get_file_s3(self, bucket: str, key: str) -> str:
         """Retrieve data from an S3 bucket"""
         try:
@@ -33,8 +34,7 @@ class S3Client:
         except ClientError as e:
             logging.error(f"File retrieval failed: {e}")
 
-
-    def delete_file_s3(self, bucket:str, key:str) -> str:
+    def delete_file_s3(self, bucket: str, key: str) -> str:
         """Delete file from an S3 bucket"""
         try:
             self.s3_client.delete_object(Bucket=bucket, Key=key)

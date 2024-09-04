@@ -14,6 +14,7 @@ from eodhp_utils.aws.s3 import S3Client
 def mock_bucket_name():
     return "test_bucket"
 
+
 @pytest.fixture
 def s3_client():
     return S3Client()
@@ -30,20 +31,28 @@ def test_create_s3_client_with_env_vars(monkeypatch):
     assert client._request_signer._credentials.access_key == "test_access_key"
     assert client._request_signer._credentials.secret_key == "test_secret_key"
 
+
 def test_create_s3_client_without_env_vars(monkeypatch):
     # Unset environment variables
     monkeypatch.delenv("AWS_ACCESS_KEY", raising=False)
     monkeypatch.delenv("AWS_SECRET_KEY", raising=False)
 
+    # Mock AWS credentials
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "mock_access_key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "mock_secret_key")
+
     s3_client = S3Client()
     client = s3_client.create_s3_client()
 
-    # Check if the client is created without specific credentials
-    assert client._request_signer._credentials.access_key is not None
-    assert client._request_signer._credentials.secret_key is not None
+    # Check if the client is created with the mocked credentials
+    assert client._request_signer._credentials.access_key == "mock_access_key"
+    assert client._request_signer._credentials.secret_key == "mock_secret_key"
+
 
 def test_upload_file_s3__success(mock_bucket_name, s3_client):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         body = "file contents"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
@@ -84,6 +93,8 @@ def test_upload_file_s3__error(s3_client, caplog, mock_bucket_name):
 
 def test_get_file_s3__success(s3_client, mock_bucket_name):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         body = "file contents"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
@@ -123,6 +134,8 @@ def test_get_file_s3__error(s3_client, caplog, mock_bucket_name):
 
 def test_delete_file_s3__success(s3_client, mock_bucket_name, monkeypatch):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
         os.makedirs(folder_path)
@@ -147,7 +160,7 @@ def test_delete_file_s3__success(s3_client, mock_bucket_name, monkeypatch):
         assert len(s3_files) == 0
 
 
-def test_delete_file_s3__error(caplog,mock_bucket_name, s3_client):
+def test_delete_file_s3__error(caplog, mock_bucket_name, s3_client):
     s3 = boto3.client("s3")
     stubber = Stubber(s3)
     s3_client.s3_client = s3
