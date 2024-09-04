@@ -12,10 +12,11 @@ class Client:
 
 
 class Producer(Client):
-    def __init__(self, topic, producer):
+    def __init__(self, topic, producer_name):
+
         super().__init__()
 
-        self.producer = self.client.create_producer(topic=topic, producer_name=producer)
+        self.producer = self.client.create_producer(topic=topic, producer_name=producer_name)
 
     def send(self, message: bytes):
         """Send a message. preferred format is bytes but also converts str and dict"""

@@ -23,7 +23,9 @@ botocore==1.34.157
 build==1.2.1
     # via pip-tools
 certifi==2024.7.4
-    # via requests
+    # via
+    #   pulsar-client
+    #   requests
 cffi==1.17.0
     # via cryptography
 cfgv==3.4.0
@@ -88,6 +90,8 @@ platformdirs==4.2.2
 pluggy==1.5.0
     # via pytest
 pre-commit==3.8.0
+    # via eodhp-utils (pyproject.toml)
+pulsar-client==3.5.0
     # via eodhp-utils (pyproject.toml)
 pycparser==2.22
     # via cffi
