@@ -7,7 +7,7 @@ import moto
 import pytest
 from botocore.stub import Stubber
 
-from eodhp_utils.aws.s3 import delete_file_s3, get_file_s3, upload_file_s3
+from eodhp_utils.aws.s3 import S3Client
 
 
 @pytest.fixture
@@ -15,8 +15,44 @@ def mock_bucket_name():
     return "test_bucket"
 
 
-def test_upload_file_s3__success(mock_bucket_name, monkeypatch):
+@pytest.fixture
+def s3_client():
+    return S3Client()
+
+
+def test_create_s3_client_with_env_vars(monkeypatch):
+    # Set environment variables
+    monkeypatch.setenv("AWS_ACCESS_KEY", "test_access_key")
+    monkeypatch.setenv("AWS_SECRET_KEY", "test_secret_key")
+
+    s3_client = S3Client()
+    client = s3_client.create_s3_client()
+
+    assert client._request_signer._credentials.access_key == "test_access_key"
+    assert client._request_signer._credentials.secret_key == "test_secret_key"
+
+
+def test_create_s3_client_without_env_vars(monkeypatch):
+    # Unset environment variables
+    monkeypatch.delenv("AWS_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("AWS_SECRET_KEY", raising=False)
+
+    # Mock AWS credentials
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "mock_access_key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "mock_secret_key")
+
+    s3_client = S3Client()
+    client = s3_client.create_s3_client()
+
+    # Check if the client is created with the mocked credentials
+    assert client._request_signer._credentials.access_key == "mock_access_key"
+    assert client._request_signer._credentials.secret_key == "mock_secret_key"
+
+
+def test_upload_file_s3__success(mock_bucket_name, s3_client):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         body = "file contents"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
@@ -30,7 +66,7 @@ def test_upload_file_s3__success(mock_bucket_name, monkeypatch):
             temp_file.write("file contents\n")
             temp_file.flush()
 
-        upload_file_s3(body=body, bucket=mock_bucket_name, key=path, s3_client=s3)
+        s3_client.upload_file_s3(body=body, bucket=mock_bucket_name, key=path)
 
         s3_resource = boto3.resource("s3")
         s3_files = list(s3_resource.Bucket(mock_bucket_name).objects.all())
@@ -41,21 +77,24 @@ def test_upload_file_s3__success(mock_bucket_name, monkeypatch):
         assert file_content == body
 
 
-def test_upload_file_s3__error(caplog, mock_bucket_name):
+def test_upload_file_s3__error(s3_client, caplog, mock_bucket_name):
     s3 = boto3.client("s3")
     stubber = Stubber(s3)
+    s3_client.s3_client = s3
 
     stubber.add_client_error(
         "put_object", service_error_code="500", service_message="Internal Server Error"
     )
 
     with stubber, caplog.at_level(logging.WARNING):
-        upload_file_s3(s3_client=s3, body="test_data", bucket=mock_bucket_name, key="test_key")
+        s3_client.upload_file_s3(body="test_data", bucket=mock_bucket_name, key="test_key")
         assert "File upload failed" in caplog.text
 
 
-def test_get_file_s3__success(mock_bucket_name):
+def test_get_file_s3__success(s3_client, mock_bucket_name):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         body = "file contents"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
@@ -75,25 +114,28 @@ def test_get_file_s3__success(mock_bucket_name):
         s3_files = list(s3_resource.Bucket(mock_bucket_name).objects.all())
         assert len(s3_files) == 1
 
-        file = get_file_s3(mock_bucket_name, path, boto3.client("s3"))
+        file = s3_client.get_file_s3(mock_bucket_name, path)
         assert file == body + "\n"  # a new line is added to the file
 
 
-def test_get_file_s3__error(caplog, mock_bucket_name):
+def test_get_file_s3__error(s3_client, caplog, mock_bucket_name):
     s3 = boto3.client("s3")
     stubber = Stubber(s3)
+    s3_client.s3_client = s3
 
     stubber.add_client_error(
         "get_object", service_error_code="500", service_message="Internal Server Error"
     )
 
     with stubber, caplog.at_level(logging.WARNING):
-        get_file_s3(s3_client=s3, bucket=mock_bucket_name, key="test_key")
+        s3_client.get_file_s3(bucket=mock_bucket_name, key="test_key")
         assert "File retrieval failed" in caplog.text
 
 
-def test_delete_file_s3__success(mock_bucket_name, monkeypatch):
+def test_delete_file_s3__success(s3_client, mock_bucket_name, monkeypatch):
     with moto.mock_aws(), tempfile.TemporaryDirectory() as temp_dir:
+        os.environ["AWS_ACCESS_KEY_ID"] = "mock_access_key"
+        os.environ["AWS_SECRET_ACCESS_KEY"] = "mock_secret_key"
         file_name = "s3.txt"
         folder_path = f"{temp_dir}/test"
         os.makedirs(folder_path)
@@ -112,20 +154,21 @@ def test_delete_file_s3__success(mock_bucket_name, monkeypatch):
         s3_files = list(s3_resource.Bucket(mock_bucket_name).objects.all())
         assert len(s3_files) == 1
 
-        delete_file_s3(mock_bucket_name, path, boto3.client("s3"))
+        s3_client.delete_file_s3(mock_bucket_name, path)
 
         s3_files = list(s3_resource.Bucket(mock_bucket_name).objects.all())
         assert len(s3_files) == 0
 
 
-def test_delete_file_s3__error(caplog, mock_bucket_name):
+def test_delete_file_s3__error(caplog, mock_bucket_name, s3_client):
     s3 = boto3.client("s3")
     stubber = Stubber(s3)
+    s3_client.s3_client = s3
 
     stubber.add_client_error(
         "delete_object", service_error_code="500", service_message="Internal Server Error"
     )
 
     with stubber, caplog.at_level(logging.WARNING):
-        delete_file_s3(s3_client=s3, bucket=mock_bucket_name, key="test_key")
+        s3_client.delete_file_s3(bucket=mock_bucket_name, key="test_key")
         assert "File deletion failed" in caplog.text
