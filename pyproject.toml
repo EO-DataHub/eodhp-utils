@@ -65,7 +65,8 @@ classifiers = [
 dependencies = [
     "jsonschema",
     "botocore",
-    "boto3"
+    "boto3",
+    "pulsar-client",
 ]
 
 # List additional groups of dependencies here (e.g. development
