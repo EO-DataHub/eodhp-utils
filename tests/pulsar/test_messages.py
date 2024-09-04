@@ -3,8 +3,7 @@ import json
 import jsonschema
 import pytest
 
-from eodhp_utils.pulsar.messages import (generate_harvest_schema,
-                                         generate_schema, get_message_data)
+from eodhp_utils.pulsar.messages import generate_harvest_schema, generate_schema, get_message_data
 
 
 class MockMessage:
