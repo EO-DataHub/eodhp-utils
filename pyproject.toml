@@ -18,8 +18,7 @@ version = "0.1.0"
 description = "Utilities for use on EODHP"
 readme = "README.md"
 
-# Our target version is Python 3.11, but it may work with earlier versions.
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 
 license = {file = "LICENSE"}
 
@@ -52,7 +51,7 @@ classifiers = [
   # "License :: Other/Proprietary License",
 
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3 :: Only",
 ]
 
@@ -87,6 +86,7 @@ dev = [
     "ruff",
     "coverage",
     "isort",
+    "validate-pyproject[all]",
     "pre-commit",
     "moto"
 ]
@@ -112,10 +112,9 @@ changelog = "https://github.com/UKEODHP/eodhp-utils/master/CHANGELOG.md"
 requires = ["setuptools>=69.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
-[options]
+[tool.setuptools]
 packages = ["eodhp_utils", "eodhp_utils.pulsar", "eodhp_utils.aws"]
-include_package_data = true
-install_requires = ["jsonschema~=3.2.0"]
+include-package-data = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -125,12 +124,14 @@ markers = [
 
 [tool.black]
 line-length = 100
-target-version = ['py311']
+target-version = ['py312']
 
 [tool.ruff]
 line-length = 110
-target-version = "py311"
-select = ["E", "F", "B", "W"]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "W", "I"]
 
 exclude = [
     ".bzr",
@@ -164,3 +165,6 @@ disable = '''
     too-many-instance-attributes,
     logging-fstring-interpolation,
 '''
+
+[tool.isort]
+profile = "black"

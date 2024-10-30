@@ -4,7 +4,7 @@ IMAGENAME = eodhp-utils
 DOCKERREPO ?= public.ecr.aws/n1b3o1k2/ukeodhp
 
 test:
-	./venv/bin/ptw
+	./venv/bin/ptw tests
 
 testonce:
 	./venv/bin/pytest
@@ -36,8 +36,8 @@ requirements-update: venv
 	./venv/bin/pip-compile --extra dev -o requirements-dev.txt -U
 
 venv:
-	virtualenv -p python3.11 venv
-	./venv/bin/python -m ensurepip -U
+	# You may need: sudo apt install python3.12-dev python3.12-venv
+	python3.12 -m venv venv --upgrade-deps
 	./venv/bin/pip3 install pip-tools
 
 .make-venv-installed: venv requirements.txt requirements-dev.txt
