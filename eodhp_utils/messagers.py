@@ -7,11 +7,23 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Sequence, Union
 
+import botocore
 import pulsar
-from boto3 import S3
 from pulsar import Message
 
 import eodhp_utils
+
+
+class TemporaryFailure(Exception):
+    """
+    Throw exceptions of this type if an error occurs during processing and it makes sense to
+    retry later. Examples might be network failures or running out of disk space.
+
+    If the exception will definitely occur again, such as a message being unparseable, then
+    any other Exception can be thrown.
+    """
+
+    pass
 
 
 class Messager[MSGTYPE](ABC):
@@ -102,10 +114,10 @@ class Messager[MSGTYPE](ABC):
         catalogue change messages.
         """
 
-        key_permanent: Sequence[str]
-        key_temporary: Sequence[str]
-        permanent: bool
-        temporary: bool
+        key_permanent: tuple[str] = tuple()
+        key_temporary: tuple[str] = tuple()
+        permanent: bool = False
+        temporary: bool = False
 
     @dataclasses.dataclass
     class S3UploadAction(S3Action):
@@ -131,7 +143,6 @@ class Messager[MSGTYPE](ABC):
         """
         # TODO: Catch and distinguish properly between temporary and permanent failures.
         #       Code currently in the transformer could move here to do this.
-        failures = Messager.Failures([], [], False, False)
 
         # If any OutputFileActions are produced then we fill these in order to generate a
         # catalogue change message. They will remain empty if not.
@@ -139,7 +150,14 @@ class Messager[MSGTYPE](ABC):
         updated_keys = []
         deleted_keys = []
 
-        actions = self.process_msg(msg)
+        try:
+            actions = self.process_msg(msg)
+        except TemporaryFailure:
+            logging.exception("Temporary failure processing message %s", msg)
+            return Messager.Failures(temporary=True)
+        except Exception:
+            logging.exception("Permanent failure processing message %s", msg)
+            return Messager.Failures(permanent=True)
 
         for action in actions:
             if isinstance(action, Messager.S3Action):
@@ -154,7 +172,7 @@ class Messager[MSGTYPE](ABC):
                         try:
                             self.s3_client.head_object(Bucket=bucket, Key=key)
                             updated_keys.append(key)
-                        except S3.Client.exceptions.NoSuchKey:
+                        except botocore.errorfactory.NoSuchKey:
                             added_keys.append(key)
                 elif isinstance(action, Messager.S3UploadAction):
                     key = action.key
@@ -183,12 +201,12 @@ class Messager[MSGTYPE](ABC):
                 data = json.dumps(change_message).encode("utf-8")
             except (ValueError, UnicodeEncodeError) as e:
                 logging.error("Failed to encode message output: %e", e)
-                failures.permanent = True
+                return Messager.Failures(permanent=True)
             else:
                 self.producer.send(data)
                 logging.debug("Catalogue change message sent to Pulsar")
 
-        return failures
+        return Messager.Failures()
 
 
 class CatalogueChangeMessager(Messager[Message], ABC):
