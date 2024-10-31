@@ -63,11 +63,21 @@ class Messager[MSGTYPE](ABC):
     """
 
     def __init__(
-        self, s3_client, output_bucket, output_prefix, producer: pulsar.Producer = None, **kwargs
+        self,
+        s3_client,
+        output_bucket,
+        cat_output_prefix="",
+        producer: pulsar.Producer = None,
+        **kwargs,
     ):
-        self._s3_client = s3_client
+        """
+        s3_client should be an authenticated boto3 S3 client, such as the result of boto3.client("s3").
+        output_bucket is used for all S3 operations where no bucket is specified.
+        cat_output_prefix is used to derive S3 keys from catalogue paths. It's not used for S3UploadActions.
+        """
+        self.s3_client = s3_client
         self.output_bucket = output_bucket
-        self.output_prefix = output_prefix
+        self.cat_output_prefix = cat_output_prefix
         self.producer = producer
 
     class Action(ABC):  # noqa: B024
@@ -119,7 +129,7 @@ class Messager[MSGTYPE](ABC):
         permanent: bool = False
         temporary: bool = False
 
-    @dataclasses.dataclass
+    @dataclasses.dataclass(kw_only=True)
     class S3UploadAction(S3Action):
         """
         An S3UploadAction uploads a file to an S3 bucket at a specified key. `output_prefix` is not
@@ -162,9 +172,10 @@ class Messager[MSGTYPE](ABC):
         for action in actions:
             if isinstance(action, Messager.S3Action):
                 bucket = action.bucket or self.output_bucket
+                key = None
 
                 if isinstance(action, Messager.OutputFileAction):
-                    key = self.output_prefix + "/" + action.cat_path
+                    key = self.output_prefix + action.cat_path
 
                     if action.file_body is None:
                         deleted_keys.append(key)
