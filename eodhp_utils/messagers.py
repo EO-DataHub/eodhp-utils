@@ -26,7 +26,9 @@ class TemporaryFailure(Exception):
     pass
 
 
-def _is_boto_error_temporary(exc: botocore.exceptions.BotoCoreError) -> bool:
+def _is_boto_error_temporary(
+    exc: Union[botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError]
+) -> bool:
     temp_excepts = (
         botocore.exceptions.ConnectionError,
         botocore.exceptions.HTTPClientError,
@@ -37,6 +39,9 @@ def _is_boto_error_temporary(exc: botocore.exceptions.BotoCoreError) -> bool:
         botocore.exceptions.IncompleteReadError,
         botocore.exceptions.CapacityNotAvailableError,
     )
+
+    if isinstance(exc, botocore.exceptions.ClientError):
+        return exc.response["ResponseMetadata"]["HTTPStatusCode"] >= 500
 
     return any(map(lambda excclass: isinstance(exc, excclass), temp_excepts))
 
@@ -147,7 +152,7 @@ class Messager[MSGTYPE](ABC):
               s3://eodhp-dev-catalogue-population/transformed/supported-datasets/ceda-stac-catalogue/
               `transformed/` is the output prefix.
             * After all other actions are completed, a catalogue change message is sent to Pulsar
-              with the above key in `added_keys` or `changed_keys`.
+              with the above key in `added_keys` or `updated_keys`.
         * If file_body is None the key defined above will be deleted from the bucket and put into
           `deleted_keys`.
         """
@@ -183,18 +188,18 @@ class Messager[MSGTYPE](ABC):
     @dataclasses.dataclass(kw_only=True)
     class CatalogueChanges:
         added: list[str] = dataclasses.field(default_factory=list)
-        changed: list[str] = dataclasses.field(default_factory=list)
+        updated: list[str] = dataclasses.field(default_factory=list)
         deleted: list[str] = dataclasses.field(default_factory=list)
 
         def add(self, other):
             return Messager.CatalogueChanges(
                 added=self.added + other.added,
-                changed=self.changed + other.changed,
+                updated=self.updated + other.changed,
                 deleted=self.deleted + other.deleted,
             )
 
         def __bool__(self):
-            return bool(self.added or self.changed or self.deleted)
+            return bool(self.added or self.updated or self.deleted)
 
     @dataclasses.dataclass(kw_only=True)
     class S3UploadAction(S3Action):
@@ -209,7 +214,19 @@ class Messager[MSGTYPE](ABC):
     def process_msg(self, msg: MSGTYPE) -> Sequence[Action]: ...
 
     @abstractmethod
-    def gen_catalogue_message(self, msg: MSGTYPE, cat_changes: CatalogueChanges) -> dict: ...
+    def gen_empty_catalogue_message(self, msg: MSGTYPE) -> dict:
+        """
+        This should generate a catalogue change message without updated_keys, deleted_keys or added_keys.
+        """
+        ...
+
+    def gen_catalogue_message(self, msg: MSGTYPE, cat_changes: CatalogueChanges) -> dict:
+        msg = self.gen_empty_catalogue_message(msg)
+        msg["added_keys"] = cat_changes.added
+        msg["updated_keys"] = cat_changes.updated
+        msg["deleted_keys"] = cat_changes.deleted
+
+        return msg
 
     def _runaction(self, action: Action, cat_changes: CatalogueChanges, failures: Failures):
         """
@@ -224,7 +241,7 @@ class Messager[MSGTYPE](ABC):
 
             try:
                 if isinstance(action, Messager.OutputFileAction):
-                    key = self.output_prefix + action.cat_path
+                    key = self.cat_output_prefix + action.cat_path
 
                     if action.file_body is None:
                         cat_changes.deleted.append(key)
@@ -232,8 +249,15 @@ class Messager[MSGTYPE](ABC):
                         try:
                             self.s3_client.head_object(Bucket=bucket, Key=key)
                             cat_changes.updated.append(key)
-                        except botocore.errorfactory.NoSuchKey:
-                            cat_changes.added.append(key)
+                        except botocore.exceptions.ClientError as e:
+                            # The string "404" is seen with moto.
+                            if (
+                                e.response["Error"]["Code"] == "NoSuchKey"
+                                or e.response["Error"]["Code"] == "404"
+                            ):
+                                cat_changes.added.append(key)
+                            else:
+                                raise
 
                 elif isinstance(action, Messager.S3UploadAction):
                     key = action.key
@@ -247,7 +271,7 @@ class Messager[MSGTYPE](ABC):
                     )
 
                     logging.info(f"Updated/created {key} in {bucket}")
-            except botocore.exceptions.BotoCoreError as e:
+            except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as e:
                 if _is_boto_error_temporary(e):
                     failures.temporary = True
                 else:
@@ -283,7 +307,6 @@ class Messager[MSGTYPE](ABC):
 
                 # It's not yet obvious how temporary failures are returned by Pulsar, such as a
                 # network failure.
-
                 self.producer.send(data)
 
                 logging.debug("Catalogue change message sent to Pulsar")
