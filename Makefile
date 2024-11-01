@@ -10,7 +10,7 @@ testonce:
 	./venv/bin/pytest
 
 ruff:
-	./venv/bin/ruff check .
+	./venv/bin/ruff check . --ignore I001
 
 black:
 	./venv/bin/black .

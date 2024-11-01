@@ -1,5 +1,3 @@
-# This is a prototype of how we might remove some of the duplicated Pulsar and S3 related
-# functionality in the ingesters, harvesters and transformer.
 import copy
 import dataclasses
 import json
@@ -8,7 +6,9 @@ from abc import ABC, abstractmethod
 from typing import Sequence, Union
 
 import botocore
+import botocore.exceptions
 import pulsar
+import pulsar.exceptions
 from pulsar import Message
 
 import eodhp_utils
@@ -24,6 +24,49 @@ class TemporaryFailure(Exception):
     """
 
     pass
+
+
+def _is_boto_error_temporary(exc: botocore.exceptions.BotoCoreError) -> bool:
+    temp_excepts = (
+        botocore.exceptions.ConnectionError,
+        botocore.exceptions.HTTPClientError,
+        botocore.exceptions.NoCredentialsError,
+        botocore.exceptions.PaginationError,
+        botocore.exceptions.ChecksumError,
+        botocore.exceptions.WaiterError,
+        botocore.exceptions.IncompleteReadError,
+        botocore.exceptions.CapacityNotAvailableError,
+    )
+
+    return any(map(lambda excclass: isinstance(exc, excclass), temp_excepts))
+
+
+def _is_pulsar_temporary(exc: pulsar.exceptions.PulsarException) -> bool:
+    # These are exceptions that sound from the name to be things we can retry after.
+    # They're listed in pulsar/exceptions.py
+    temp_excepts = (
+        pulsar.exceptions.Timeout,
+        pulsar.exceptions.ConnectError,
+        pulsar.exceptions.ReadError,
+        pulsar.exceptions.BrokerPersistenceError,
+        pulsar.exceptions.ChecksumError,
+        pulsar.exceptions.ConsumerBusy,
+        pulsar.exceptions.NotConnected,
+        pulsar.exceptions.AlreadyClosed,
+        pulsar.exceptions.ProducerBusy,
+        pulsar.exceptions.TooManyLookupRequestException,
+        pulsar.exceptions.ServiceUnitNotReady,
+        pulsar.exceptions.ProducerBlockedQuotaExceededError,
+        pulsar.exceptions.ProducerBlockedQuotaExceededException,
+        pulsar.exceptions.ProducerQueueIsFull,
+        pulsar.exceptions.InvalidTxnStatusError,
+        pulsar.exceptions.TransactionConflict,
+        pulsar.exceptions.TransactionNotFound,
+        pulsar.exceptions.MemoryBufferIsFull,
+        pulsar.exceptions.Interrupted,
+    )
+
+    return any(map(lambda excclass: isinstance(exc, excclass), temp_excepts))
 
 
 class Messager[MSGTYPE](ABC):
@@ -124,10 +167,34 @@ class Messager[MSGTYPE](ABC):
         catalogue change messages.
         """
 
-        key_permanent: tuple[str] = tuple()
-        key_temporary: tuple[str] = tuple()
+        key_permanent: list[str] = dataclasses.field(default_factory=list)
+        key_temporary: list[str] = dataclasses.field(default_factory=list)
         permanent: bool = False
         temporary: bool = False
+
+        def add(self, f):
+            return Messager[MSGTYPE].Failures(
+                key_permanent=self.key_permanent + f.key_permanent,
+                key_temporary=self.key_temporary + f.key_temporary,
+                permanent=self.permanent or f.permanent,
+                temporary=self.temporary or f.temporary,
+            )
+
+    @dataclasses.dataclass(kw_only=True)
+    class CatalogueChanges:
+        added: list[str] = dataclasses.field(default_factory=list)
+        changed: list[str] = dataclasses.field(default_factory=list)
+        deleted: list[str] = dataclasses.field(default_factory=list)
+
+        def add(self, other):
+            return Messager.CatalogueChanges(
+                added=self.added + other.added,
+                changed=self.changed + other.changed,
+                deleted=self.deleted + other.deleted,
+            )
+
+        def __bool__(self):
+            return bool(self.added or self.changed or self.deleted)
 
     @dataclasses.dataclass(kw_only=True)
     class S3UploadAction(S3Action):
@@ -142,49 +209,32 @@ class Messager[MSGTYPE](ABC):
     def process_msg(self, msg: MSGTYPE) -> Sequence[Action]: ...
 
     @abstractmethod
-    def gen_catalogue_message(
-        self, msg: MSGTYPE, added_keys, updated_keys, deleted_keys
-    ) -> dict: ...
+    def gen_catalogue_message(self, msg: MSGTYPE, cat_changes: CatalogueChanges) -> dict: ...
 
-    def consume(self, msg: MSGTYPE) -> Failures:
+    def _runaction(self, action: Action, cat_changes: CatalogueChanges, failures: Failures):
         """
-        This consumes an input, asks the Messager (via an implementation in a task-specific
-        subclass) to process it, then runs the set of actions requested by that processing.
+        Runs a single action. cat_changes is updated to add any catalogue changes we must publish
+        as a result of them. failures is updated with any known failures.
+
+        Exceptions may still be thrown due to bugs.
         """
-        # TODO: Catch and distinguish properly between temporary and permanent failures.
-        #       Code currently in the transformer could move here to do this.
+        if isinstance(action, Messager.S3Action):
+            bucket = action.bucket or self.output_bucket
+            key = None
 
-        # If any OutputFileActions are produced then we fill these in order to generate a
-        # catalogue change message. They will remain empty if not.
-        added_keys = []
-        updated_keys = []
-        deleted_keys = []
-
-        try:
-            actions = self.process_msg(msg)
-        except TemporaryFailure:
-            logging.exception("Temporary failure processing message %s", msg)
-            return Messager.Failures(temporary=True)
-        except Exception:
-            logging.exception("Permanent failure processing message %s", msg)
-            return Messager.Failures(permanent=True)
-
-        for action in actions:
-            if isinstance(action, Messager.S3Action):
-                bucket = action.bucket or self.output_bucket
-                key = None
-
+            try:
                 if isinstance(action, Messager.OutputFileAction):
                     key = self.output_prefix + action.cat_path
 
                     if action.file_body is None:
-                        deleted_keys.append(key)
+                        cat_changes.deleted.append(key)
                     else:
                         try:
                             self.s3_client.head_object(Bucket=bucket, Key=key)
-                            updated_keys.append(key)
+                            cat_changes.updated.append(key)
                         except botocore.errorfactory.NoSuchKey:
-                            added_keys.append(key)
+                            cat_changes.added.append(key)
+
                 elif isinstance(action, Messager.S3UploadAction):
                     key = action.key
 
@@ -197,27 +247,59 @@ class Messager[MSGTYPE](ABC):
                     )
 
                     logging.info(f"Updated/created {key} in {bucket}")
+            except botocore.exceptions.BotoCoreError as e:
+                if _is_boto_error_temporary(e):
+                    failures.temporary = True
+                else:
+                    failures.permanent = True
 
-            else:
-                raise AssertionError(f"BUG: Saw unknown action type {action}")
+                return failures
+        else:
+            raise AssertionError(f"BUG: Saw unknown action type {action}")
 
-        if added_keys or updated_keys or deleted_keys:
-            # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
-            # change message.
-            change_message = self.gen_catalogue_message(
-                added_keys=added_keys, updated_keys=updated_keys, deleted_keys=deleted_keys
-            )
+    def consume(self, msg: MSGTYPE) -> Failures:
+        """
+        This consumes an input, asks the Messager (via an implementation in a task-specific
+        subclass) to process it, then runs the set of actions requested by that processing.
 
-            try:
+        This returns an object specified any failures that occurred and whether retrying is
+        sensible. This means it doesn't throw exceptions.
+        """
+        failures = Messager.Failures()
+
+        try:
+            actions = self.process_msg(msg)
+
+            cat_changes = Messager.CatalogueChanges()
+            for action in actions:
+                self._runaction(action, cat_changes, failures)
+
+            if cat_changes:
+                # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
+                # change message.
+                change_message = self.gen_catalogue_message(msg, cat_changes)
+
                 data = json.dumps(change_message).encode("utf-8")
-            except (ValueError, UnicodeEncodeError) as e:
-                logging.error("Failed to encode message output: %e", e)
-                return Messager.Failures(permanent=True)
-            else:
-                self.producer.send(data)
-                logging.debug("Catalogue change message sent to Pulsar")
 
-        return Messager.Failures()
+                # It's not yet obvious how temporary failures are returned by Pulsar, such as a
+                # network failure.
+
+                self.producer.send(data)
+
+                logging.debug("Catalogue change message sent to Pulsar")
+        except TemporaryFailure:
+            logging.exception("Temporary failure processing message %s", msg)
+            failures.temporary = True
+        except pulsar.exceptions.PulsarException as e:
+            if _is_pulsar_temporary(e):
+                failures.temporary = True
+            else:
+                failures.permanent = True
+        except Exception:
+            logging.exception("Permanent failure processing message %s", msg)
+            failures.permanent = True
+
+        return failures
 
 
 class CatalogueChangeMessager(Messager[Message], ABC):
