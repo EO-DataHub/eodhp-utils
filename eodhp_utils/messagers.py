@@ -11,6 +11,7 @@ import pulsar.exceptions
 from pulsar import Message
 
 import eodhp_utils
+import eodhp_utils.pulsar.messages
 
 
 class TemporaryFailure(Exception):
@@ -436,55 +437,55 @@ class CatalogueChangeMessager(Messager[Message], ABC):
 
 class CatalogueChangeBodyMessager(CatalogueChangeMessager):
     """
-    This extends CatalogueChangeMessager to read changed files from S3 in consume_update and pass
-    them to consume_update_entry_body.
+    This extends CatalogueChangeMessager so that rather than passing buckets and keys to the
+    processor subclass it passes the file contents. This only works for add/update and not
+    delete.
 
-    Subclasses should implement consume_update_entry_body.
+    Subclasses should implement consume_update_body and consume_delete.
     """
 
-    def consume_update(
-        self, key: str, source: str, target: str, output_root: str, bucket: str
-    ) -> Sequence[CatalogueChangeMessager.Action]:
-        file_body = eodhp_utils.aws.s3.get_file_s3(bucket, key, self._s3_client)
+    def process_update(
+        self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+    ) -> Sequence[Messager.Action]:
+        get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
+        entry_body = get_result["Body"].read()
 
-        try:
-            file_body = json.loads(file_body)
-        except ValueError:
-            # Not a JSON file - consume it as a string
-            logging.info(f"File {key} is not valid JSON.")
+        if get_result["ResponseMetadata"]["HTTPHeaders"]["content-type"] == "application/json":
+            try:
+                entry_body = json.loads(entry_body)
+            except ValueError:
+                # Not a JSON file - consume it as a string
+                logging.info(f"File {input_key} is not valid JSON.")
 
-        return self.consume_update_file_contents(file_body)
+        return self.process_update_body(entry_body, cat_path, source, target)
 
     @abstractmethod
-    def consume_update_entry_contents(
-        self, file_body: Union[dict, str]
+    def process_update_body(
+        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
     ) -> Sequence[CatalogueChangeMessager.Action]: ...
 
 
 class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
     """
-    A type of messager that ignores any updates or creations which aren't STAC.
+    A type of messager that ignores any updates or creations which aren't STAC. Subclasses will
+    receive STAC as a dict to their process_update_stac method.
 
-    Deletes are not affected.
-
-    Inherit from this and implement consume_stac_update.
+    Deletes are not affected - consume_delete must still be implemented.
     """
 
-    def consume_update_entry_contents(
-        self,
-        cat_path: str,
-        entry_body: Union[dict, str],
-        **kwargs,
+    def process_update_body(
+        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
     ) -> Sequence[CatalogueChangeMessager.Action]:
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
-            return None
+            return []
 
-        return self.consume_stac_update(cat_path, entry_body, **kwargs)
+        return self.process_update_stac(entry_body, cat_path, source, target)
 
     @abstractmethod
-    def consume_stac_update(
+    def process_update_stac(
         self,
-        cat_path: str,
         stac: dict,
-        **kwargs,
+        cat_path: str,
+        source: str,
+        target: str,
     ) -> Sequence[CatalogueChangeMessager.Action]: ...

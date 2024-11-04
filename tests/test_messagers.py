@@ -11,7 +11,12 @@ import pulsar.exceptions
 from moto import mock_aws
 from pulsar import Message
 
-from eodhp_utils.messagers import CatalogueChangeMessager, Messager, TemporaryFailure
+from eodhp_utils.messagers import (
+    CatalogueChangeMessager,
+    CatalogueSTACChangeMessager,
+    Messager,
+    TemporaryFailure,
+)
 
 SOURCE_PATH = "https://example.link.for.test/"
 TARGET = "/target_directory/"
@@ -408,3 +413,93 @@ def test_catalogue_change_messager_aggregates_individual_failures():
         key_permanent=["testprefix-in/path/permerror", "testprefix-in/path2/permerror"],
         key_temporary=["testprefix-in/path/temperror"],
     )
+
+
+@mock_aws
+def test_stac_change_messager_processes_only_stac():
+    class TestCatalogueChangeMessager(CatalogueSTACChangeMessager):
+        def process_update_stac(
+            self, stac: dict, cat_path: str, source: str, target: str
+        ) -> Sequence[Messager.Action]:
+            return (
+                Messager.OutputFileAction(
+                    file_body=bytes(
+                        f"STAC: {stac.get('id')=}, {cat_path=}, {source=}, {target=}",
+                        "utf-8",
+                    ),
+                    cat_path=cat_path,
+                ),
+            )
+
+        def process_delete(
+            self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+        ) -> Sequence[Messager.Action]:
+            return []
+
+    conn = boto3.resource("s3")
+    client = boto3.client("s3")
+    conn.create_bucket(Bucket="testbucket")
+
+    client.put_object(
+        Bucket="testbucket",
+        Key="testprefix-in/path/k1",
+        ContentType="application/json",
+        Body=b"notjson",
+    )
+
+    client.put_object(
+        Bucket="testbucket", Key="testprefix-in/path/k2", ContentType="text/plain", Body=b"notjson"
+    )
+
+    client.put_object(
+        Bucket="testbucket",
+        Key="testprefix-in/path/k3",
+        ContentType="application/json",
+        Body=b'{"not": "stac"}',
+    )
+
+    client.put_object(
+        Bucket="testbucket",
+        Key="testprefix-in/path/k4",
+        ContentType="application/json",
+        Body=json.dumps(
+            {
+                "type": "Collection",
+                "stac_version": "1.0.0",
+                "stac_extensions": [],
+                "id": "sentinel2_ard",
+            }
+        ),
+    )
+
+    testmessager = TestCatalogueChangeMessager(client, "testbucket", "testprefix-out/")
+    testmsg = pulsar_message_from_dict(
+        {
+            "id": "harvest-source-id",
+            "workspace": "workspace-id",
+            "bucket_name": "testbucket",
+            "source": "source-path",
+            "target": "target-path",
+            "updated_keys": ["testprefix-in/path/k1", "testprefix-in/path/k2"],
+            "added_keys": [
+                "testprefix-in/path/k3",
+                "testprefix-in/path/k4",
+            ],
+            "deleted_keys": [
+                "testprefix-in/path/k5",
+            ],
+        }
+    )
+
+    actions = testmessager.process_msg(testmsg)
+    assert actions == [
+        Messager.OutputFileAction(
+            file_body=(
+                b"STAC: stac.get('id')='sentinel2_ard', "
+                + b"cat_path='path/k4', "
+                + b"source='source-path', "
+                + b"target='target-path'"
+            ),
+            cat_path="path/k4",
+        ),
+    ]
