@@ -86,10 +86,13 @@ class Messager[MSGTYPE](ABC):
           an added, changed or deleted key in a Pulsar message.
       * S3UploadAction:
           Write a file to an S3 bucket.
+      * FailureAction:
+          Mark the whole processing or a single catalogue key as having failed permanent (no retry
+          allowed) or temporarily (retry allowed).
 
     You should inherit from the correct subclass:
       * Producing Pulsar messages only (harvester):
-          Inherit from Messager and implement process_msg(self, msg: <my obj>, **kwargs).
+          Inherit from Messager and implement process_msg(self, msg: <my obj>).
           Return a list of actions, probably OutputFileActions.
 
           Design your harvester to encapsulate each harvested entry as a <my obj> and call
@@ -98,16 +101,26 @@ class Messager[MSGTYPE](ABC):
           Write your tests to call process_msg directly.
 
       * Consuming Pulsar catalogue change messages only (ingester):
-          Inherit from CatalogueChangeMessager and implement process_update and process_delete.
-          Alternatively, use one of the subclasses defined here, such as
-          CatalogueSTACChangeMessager, which will fetch the entry and ensure it's STAC before
-          calling your subclass's process_stac_update method.
+          You have three choices, in decreasing preference:
+            * Inherit from CatalogueSTACChangeMessager and implement the process_update_stac and
+              process_delete methods. For every new or changed STAC entry in the messages
+              received by consume(), process_update_stac will be called with the STAC in
+              dictionary form.
+            * Inherit from CatalogueChangeBodyMessager and implement process_update_body. This
+              works even if the file bodies are not STAC. Your process_update_body method will
+              receive the file contents for the files referred-to in the message.
+            * Inherit from CatalogueChangeMessager and implement process_update and process_delete.
+              Your methods will be called with the location in the S3 bucket of the inputs but
+              not the file contents.
 
           Return an empty list if no further action is needed.
 
       * Consuming and producing Pulsar cataloge change messages (transformer):
-          As for consuming Pulsar messages in the previous bullet except you should return a list
-          of OutputFileActions.
+          This is the same as for ingesters but, instead of returning an empty list, return a list
+          of OutputFileActions. For a STAC transformer this means Messager will receive new/changed
+          STAC in calls to process_update_stac, generate the transformed STAC and return
+          OutputFileActions with the transformed STAC inside. The Messager framework will handle
+          uploading this to S3 in the output location and sending a new message.
     """
 
     def __init__(
