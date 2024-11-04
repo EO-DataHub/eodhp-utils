@@ -1,4 +1,3 @@
-import copy
 import dataclasses
 import json
 import logging
@@ -160,6 +159,16 @@ class Messager[MSGTYPE](ABC):
         cat_path: str
 
     @dataclasses.dataclass(kw_only=True)
+    class FailureAction(Action):
+        """
+        This indicates a failure occured and which may have occurred processing only a particular
+        catalogue change message entry.
+        """
+
+        key: str = None
+        permanent: bool = True
+
+    @dataclasses.dataclass(kw_only=True)
     class Failures:
         """
         Describes the type of errors encountered during message processing.
@@ -278,6 +287,14 @@ class Messager[MSGTYPE](ABC):
                     failures.permanent = True
 
                 return failures
+        elif isinstance(action, Messager.FailureAction):
+            if action.key:
+                lst = failures.key_permanent if action.permanent else failures.key_temporary
+                lst.append(action.key)
+            elif action.permanent:
+                failures.permanent = True
+            else:
+                failures.temporary = True
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
@@ -345,25 +362,21 @@ class CatalogueChangeMessager(Messager[Message], ABC):
         self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
     ) -> Sequence[Messager.Action]: ...
 
-    def gen_catalogue_message(self, msg: Message, added_keys, updated_keys, deleted_keys) -> dict:
+    def gen_empty_catalogue_message(self, msg: Message) -> dict:
         return {
             "id": self.input_change_msg.get("id"),
             "workspace": self.input_change_msg.get("workspace"),
             "bucket_name": self.output_bucket,
-            "added_keys": added_keys,
-            "updated_keys": updated_keys,
-            "deleted_keys": deleted_keys,
             "source": self.input_change_msg.get("source"),
             "target": self.input_change_msg.get("target"),
         }
 
-    def consume(self, msg: Message, output_root):
+    def process_msg(self, msg: Message) -> Sequence[Messager.Action]:
         """
-        This consumes an input catalogue change message, loops over each changed entry in it,
-        asks the implementation (in a task-specific subclass) to process each one separately,
-        then runs the set of actions requested by all of those invocations.
+        This processes an input catalogue change message, loops over each changed entry in it,
+        asks the implementation (in a task-specific subclass) to process each one separately.
+        The set of actions is then returned for the superclass to run.
         """
-
         harvest_schema = eodhp_utils.pulsar.messages.generate_harvest_schema()
         self.input_change_msg = eodhp_utils.pulsar.messages.get_message_data(msg, harvest_schema)
         input_change_msg = self.input_change_msg
@@ -374,35 +387,18 @@ class CatalogueChangeMessager(Messager[Message], ABC):
         source = input_change_msg.get("source")
         target = input_change_msg.get("target")
 
-        output_data = copy.deepcopy(input_change_msg)
-        output_data["added_keys"] = []
-        output_data["updated_keys"] = []
-        output_data["deleted_keys"] = []
-        output_data["failed_files"] = {
-            "temp_failed_keys": {
-                "updated_keys": [],
-                "added_keys": [],
-                "deleted_keys": [],
-            },
-            "perm_failed_keys": {
-                "updated_keys": [],
-                "added_keys": [],
-                "deleted_keys": [],
-            },
-        }
-        error_data = copy.deepcopy(output_data)
-
+        all_actions = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
             for key in input_change_msg.get(change_type):
                 # The key in the source bucket has format
                 # "<harvest-pipeline-component>/<catalogue-path>"
                 #
                 # These two pieces must be separated.
-                previous_step, cat_path = key.split("/", 1)
+                previous_step_prefix, cat_path = key.split("/", 1)
 
                 try:
                     if change_type == "deleted_keys":
-                        actions = self.process_delete(
+                        entry_actions = self.process_delete(
                             input_bucket,
                             key,
                             cat_path,
@@ -411,7 +407,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                         )
                     else:
                         # Updated or added.
-                        actions = self.process_update(
+                        entry_actions = self.process_update(
                             input_bucket,
                             key,
                             cat_path,
@@ -419,22 +415,23 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                             target,
                         )
 
-                    # TODO: Process the actions
-                    logging.debug(actions)
-                except eodhp_utils.pulsar.messages.URLAccessError as e:
-                    logging.error(f"Unable to access key {key}: {e}")
-                    error_data["failed_files"]["perm_failed_keys"][change_type].append(key)
-                    continue
-                except eodhp_utils.pulsar.messages.ClientError as e:
-                    logging.error(f"Temporary error processing {change_type} key {key}: {e}")
-                    output_data["failed_files"]["temp_failed_keys"][change_type].append(key)
-                    continue
-                except Exception as e:
-                    logging.exception(f"Permanent error processing {change_type} key {key}: {e}")
-                    output_data["failed_files"]["perm_failed_keys"][change_type].append(key)
-                    continue
+                    logging.debug("f{entry_actions=}")
+                    all_actions += entry_actions
+                except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as e:
+                    if _is_boto_error_temporary(e):
+                        logging.exception(f"Temporary Boto error for {key=}")
+                        all_actions.append(Messager.FailureAction(key=key, permanent=False))
+                    else:
+                        logging.exception(f"Permanent Boto error for {key=}")
+                        all_actions.append(Messager.FailureAction(key=key, permanent=True))
+                except TemporaryFailure:
+                    logging.exception(f"TemporaryFailure processing {key=}")
+                    all_actions.append(Messager.FailureAction(key=key, permanent=False))
+                except Exception:
+                    logging.exception(f"Exception processing {key=}")
+                    all_actions.append(Messager.FailureAction(key=key, permanent=True))
 
-        return output_data, error_data
+        return all_actions
 
 
 class CatalogueChangeBodyMessager(CatalogueChangeMessager):
