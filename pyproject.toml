@@ -14,7 +14,8 @@
 
 [project]
 name = "eodhp-utils"
-version = "0.1.0"
+# Version is calculated by setuptools-git-versioning from the Git tag.
+dynamic = ["version"]
 description = "Utilities for use on EODHP"
 readme = "README.md"
 
@@ -110,12 +111,15 @@ changelog = "https://github.com/UKEODHP/eodhp-utils/master/CHANGELOG.md"
 [build-system]
 # These are the assumed default build requirements from pip:
 # https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ["setuptools>=69.0.0", "wheel"]
+requires = ["setuptools>=69.0.0", "wheel", "setuptools-git-versioning>=2.0,<3"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["eodhp_utils", "eodhp_utils.pulsar", "eodhp_utils.aws"]
 include-package-data = true
+
+[tool.setuptools-git-versioning]
+enabled = true
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
