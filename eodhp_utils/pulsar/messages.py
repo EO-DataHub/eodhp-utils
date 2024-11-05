@@ -1,10 +1,8 @@
 import json
 import logging
-import os
 
 import jsonschema
 import jsonschema.exceptions
-from pulsar import Client
 
 
 def generate_harvest_schema():
@@ -47,23 +45,3 @@ def get_message_data(msg, schema=None):
             logging.error(f"Validation failed: {e}")
             raise
     return data_dict
-
-
-def run(topics: list, messagers_dict: dict, subscription_name: str):
-
-    pulsar_url = os.environ.get("PULSAR_URL")
-    client = Client(pulsar_url)
-    consumer = client.subscribe(topics, subscription_name=subscription_name)
-
-    while True:
-        pulsar_message = consumer.receive()
-
-        messager = messagers_dict[pulsar_message.topic_name]
-
-        failures = messager.consume(pulsar_message)
-
-        if failures.permanent:
-            pulsar_message.negative_acknowledge()
-            raise Exception
-        else:
-            pulsar_message.acknowledge()
