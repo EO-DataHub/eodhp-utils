@@ -21,8 +21,9 @@ def run(messagers_dict: dict, subscription_name: str):
 
         failures = messager.consume(pulsar_message)
 
-        if failures.permanent:
+        if failures.any_temporary():
             pulsar_message.negative_acknowledge()
-            raise Exception
+        elif failures.any_permanent():
+            pass
         else:
             pulsar_message.acknowledge()
