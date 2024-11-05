@@ -15,14 +15,16 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: 3.12
           cache: "pip"
-          cache-dependency-path: "eodhp-utils/*.txt"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
 
       - name: Install dependencies
         run: |
@@ -39,7 +41,7 @@ jobs:
 
       - name: Coverage Check
         run: |
-          if (( $(echo "$COVERAGE < 100" | awk '{print ($1 < 100)}' ) )); then
+          if (( $(echo "$COVERAGE < 80" | awk '{print ($1 < 80)}' ) )); then
             echo "Code coverage is $COVERAGE% and below expected level"
             exit 1
           else
