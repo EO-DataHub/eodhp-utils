@@ -46,7 +46,7 @@ def _is_boto_error_temporary(
     return any(map(lambda excclass: isinstance(exc, excclass), temp_excepts))
 
 
-def _is_pulsar_temporary(exc: pulsar.exceptions.PulsarException) -> bool:
+def _is_pulsar_error_temporary(exc: pulsar.exceptions.PulsarException) -> bool:
     # These are exceptions that sound from the name to be things we can retry after.
     # They're listed in pulsar/exceptions.py
     temp_excepts = (
@@ -129,12 +129,14 @@ class Messager[MSGTYPE](ABC):
         output_bucket,
         cat_output_prefix="",
         producer: pulsar.Producer = None,
-        **kwargs,
     ):
         """
         s3_client should be an authenticated boto3 S3 client, such as the result of boto3.client("s3").
         output_bucket is used for all S3 operations where no bucket is specified.
-        cat_output_prefix is used to derive S3 keys from catalogue paths. It's not used for S3UploadActions.
+        cat_output_prefix is used to derive S3 keys from catalogue paths. It's not used for S3UploadActions,
+        only OutputFileAction.
+        producer is used to send catalogue change messages listing the changes returned via OutputFileAction.
+        It can be None if these are never returned.
         """
         self.s3_client = s3_client
         self.output_bucket = output_bucket
@@ -199,6 +201,12 @@ class Messager[MSGTYPE](ABC):
         key_temporary: list[str] = dataclasses.field(default_factory=list)
         permanent: bool = False
         temporary: bool = False
+
+        def any_permanent(self):
+            return self.permanent or self.key_permanent
+
+        def any_temporary(self):
+            return self.temporary or self.key_temporary
 
         def add(self, f):
             return Messager[MSGTYPE].Failures(
@@ -333,11 +341,7 @@ class Messager[MSGTYPE](ABC):
                 # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
                 # change message.
                 change_message = self.gen_catalogue_message(msg, cat_changes)
-
                 data = json.dumps(change_message).encode("utf-8")
-
-                # It's not yet obvious how temporary failures are returned by Pulsar, such as a
-                # network failure.
                 self.producer.send(data)
 
                 logging.debug("Catalogue change message sent to Pulsar")
@@ -345,7 +349,7 @@ class Messager[MSGTYPE](ABC):
             logging.exception("Temporary failure processing message %s", msg)
             failures.temporary = True
         except pulsar.exceptions.PulsarException as e:
-            if _is_pulsar_temporary(e):
+            if _is_pulsar_error_temporary(e):
                 failures.temporary = True
             else:
                 failures.permanent = True
