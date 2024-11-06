@@ -433,7 +433,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                             target,
                         )
 
-                    logging.debug("f{entry_actions=}")
+                    logging.debug(f"{entry_actions=}")
                     all_actions += entry_actions
                 except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as e:
                     if _is_boto_error_temporary(e):
