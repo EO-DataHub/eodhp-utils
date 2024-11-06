@@ -31,7 +31,7 @@ def run(messagers_dict: dict, subscription_name: str):
 
         messager = messagers_dict[topic_name]
 
-        failures = messager.process_update(pulsar_message)
+        failures = messager.process_msg(pulsar_message)
 
         if failures.any_temporary():
             pulsar_message.negative_acknowledge()
