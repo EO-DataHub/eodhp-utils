@@ -4,6 +4,17 @@ from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType
 
 
 def run(messagers_dict: dict, subscription_name: str):
+    """Run loop to monitor arrival of pulsar messages on a given topic.
+
+    Example usage:
+    annotations_messager = AnnotationsMessager(s3_client=s3_client, output_bucket=destination_bucket)
+    run(
+        {
+            "transformed-annotations": annotations_messager
+        },
+        "annotations-ingester",
+    )
+    """
 
     pulsar_url = os.environ.get("PULSAR_URL")
     client = Client(pulsar_url)
@@ -34,8 +45,8 @@ def run(messagers_dict: dict, subscription_name: str):
         failures = messager.consume(pulsar_message)
 
         if failures.any_temporary():
-            pulsar_message.negative_acknowledge()
+            consumer.negative_acknowledge(pulsar_message)
         elif failures.any_permanent():
             pass
         else:
-            pulsar_message.acknowledge()
+            consumer.acknowledge(pulsar_message)
