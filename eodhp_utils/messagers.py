@@ -156,6 +156,7 @@ class Messager[MSGTYPE](ABC):
         bucket: str = None  # Defaults to messager.output_bucket
         file_body: str
         mime_type: str = "application/json"
+        cache_control: str = "0"
 
     @dataclasses.dataclass(kw_only=True)
     class OutputFileAction(S3Action):
@@ -297,8 +298,13 @@ class Messager[MSGTYPE](ABC):
                     self.s3_client.delete_object(Bucket=bucket, Key=key)
                     logging.info(f"Deleted {key} in {bucket}")
                 else:
+                    cache_control = action.cache_control if action.cache_control else 0
                     self.s3_client.put_object(
-                        Body=action.file_body, Bucket=bucket, Key=key, ContentType=action.mime_type
+                        Body=action.file_body,
+                        Bucket=bucket,
+                        Key=key,
+                        ContentType=action.mime_type,
+                        CacheControl=cache_control,
                     )
 
                     logging.info(f"Updated/created {key} in {bucket}")
