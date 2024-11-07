@@ -241,6 +241,7 @@ class Messager[MSGTYPE](ABC):
         """
 
         key: str
+        cache_control: str
 
     @abstractmethod
     def process_msg(self, msg: MSGTYPE) -> Sequence[Action]: ...
