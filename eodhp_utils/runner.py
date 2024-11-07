@@ -46,7 +46,5 @@ def run(messagers_dict: dict, subscription_name: str):
 
         if failures.any_temporary():
             consumer.negative_acknowledge(pulsar_message)
-        elif failures.any_permanent():
-            pass
         else:
             consumer.acknowledge(pulsar_message)
