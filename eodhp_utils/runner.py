@@ -30,7 +30,7 @@ def run(messagers_dict: dict, subscription_name: str):
         consumer_type=ConsumerType.Shared,
         dead_letter_policy=ConsumerDeadLetterPolicy(
             max_redeliver_count=max_redelivery_count,
-            dead_letter_topic=f"dead-letter-annotations-ingester",  # noqa:F541
+            dead_letter_topic=f"dead-letter-{subscription_name}",  # noqa:F541
         ),
         negative_ack_redelivery_delay_ms=delay_ms,
     )
