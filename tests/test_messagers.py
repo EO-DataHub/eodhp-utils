@@ -6,9 +6,10 @@ from unittest.mock import Mock
 
 import boto3
 import botocore
+import moto
 import pulsar
 import pulsar.exceptions
-from moto import mock_aws
+import pytest
 from pulsar import Message
 
 from eodhp_utils.messagers import (
@@ -21,6 +22,30 @@ from eodhp_utils.messagers import (
 SOURCE_PATH = "https://example.link.for.test/"
 TARGET = "/target_directory/"
 OUTPUT_ROOT = "https://output.root.test"
+
+
+@pytest.fixture
+def s3_client():
+    # See https://github.com/getmoto/moto/issues/1568 for some details on the AWS mocks.
+    #
+    # This must be a context manager (no @mock_aws annotation), this fixture must yield and not
+    # return and the tests shouldn't have @mock_aws themselves (although this seems to work now).
+    with moto.mock_aws():
+        conn = boto3.resource("s3")
+        client = boto3.client("s3")
+        cbconfig = {
+            "LocationConstraint": "eu-west-2",
+        }
+        conn.create_bucket(
+            Bucket="testbucket",
+            CreateBucketConfiguration=cbconfig,
+        )
+        conn.create_bucket(
+            Bucket="testbucket2",
+            CreateBucketConfiguration=cbconfig,
+        )
+
+        yield client
 
 
 def pulsar_message_from_dict(val: dict) -> Message:
@@ -70,8 +95,7 @@ def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=False)
 
 
-@mock_aws
-def test_s3_upload_action_processed():
+def test_s3_upload_action_processed(s3_client):
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
@@ -83,29 +107,23 @@ def test_s3_upload_action_processed():
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {}
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-    conn.create_bucket(Bucket="testbucket2")
-
-    testmessager = TestMessager(client, "testbucket", "testprefix/")
+    testmessager = TestMessager(s3_client, "testbucket", "testprefix/")
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=False)
 
-    obj1 = client.get_object(Bucket="testbucket2", Key="k1")
+    obj1 = s3_client.get_object(Bucket="testbucket2", Key="k1")
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body1"
 
-    obj1 = client.get_object(Bucket="testbucket", Key="k2")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="k2")
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body2"
 
-    obj1 = client.get_object(Bucket="testbucket", Key="k3")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="k3")
     assert obj1["ContentType"] == "x-test"
     assert obj1["Body"].read() == b"test_body3"
 
 
-@mock_aws
-def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result():
+def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_client):
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
@@ -115,15 +133,10 @@ def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result():
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {}
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-
-    testmessager = TestMessager(client, "testbucket", "testprefix/")
+    testmessager = TestMessager(s3_client, "testbucket", "testprefix/")
     assert testmessager.consume("") == Messager.Failures(permanent=True, temporary=False)
 
 
-@mock_aws
 def test_s3_timeout_error_produces_temporary_error_result():
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
@@ -141,8 +154,7 @@ def test_s3_timeout_error_produces_temporary_error_result():
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
-@mock_aws
-def test_output_file_action_catalogue_change_message_sent_and_s3_updated():
+def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_client):
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
@@ -162,36 +174,32 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated():
                 "id": "test",
             }
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-    conn.create_bucket(Bucket="testbucket2")
-    client.put_object(Bucket="testbucket", Key="testprefix/k4", Body="unset")
-    client.put_object(Bucket="testbucket", Key="testprefix/k5", Body="unset")
+    s3_client.put_object(Bucket="testbucket", Key="testprefix/k4", Body="unset")
+    s3_client.put_object(Bucket="testbucket", Key="testprefix/k5", Body="unset")
 
     producer = Mock()
 
-    testmessager = TestMessager(client, "testbucket", "testprefix/", producer)
+    testmessager = TestMessager(s3_client, "testbucket", "testprefix/", producer)
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=False)
 
-    obj1 = client.get_object(Bucket="testbucket2", Key="testprefix/k1")
+    obj1 = s3_client.get_object(Bucket="testbucket2", Key="testprefix/k1")
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body1"
 
-    obj1 = client.get_object(Bucket="testbucket", Key="testprefix/k2")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix/k2")
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body2"
 
-    obj1 = client.get_object(Bucket="testbucket", Key="testprefix/k3")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix/k3")
     assert obj1["ContentType"] == "x-test"
     assert obj1["Body"].read() == b"test_body3"
 
-    obj1 = client.get_object(Bucket="testbucket", Key="testprefix/k4")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix/k4")
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body4"
 
     try:
-        obj1 = client.get_object(Bucket="testbucket", Key="testprefix/k5")
+        obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix/k5")
     except botocore.exceptions.ClientError as e:
         assert e.response["Error"]["Code"] == "NoSuchKey" or e.response["Error"]["Code"] == "404"
 
@@ -206,8 +214,7 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated():
     }
 
 
-@mock_aws
-def test_output_file_action_treats_invalid_message_json_as_permanent_error():
+def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_client):
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
@@ -215,18 +222,13 @@ def test_output_file_action_treats_invalid_message_json_as_permanent_error():
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {"id": sys.stderr}
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-
     producer = Mock()
 
-    testmessager = TestMessager(client, "testbucket", "testprefix/", producer)
+    testmessager = TestMessager(s3_client, "testbucket", "testprefix/", producer)
     assert testmessager.consume("") == Messager.Failures(permanent=True, temporary=False)
 
 
-@mock_aws
-def test_output_file_action_treats_pulsar_timeout_as_temporary_error():
+def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
     class TestMessager(Messager[str]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
@@ -234,19 +236,14 @@ def test_output_file_action_treats_pulsar_timeout_as_temporary_error():
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {"id": "test"}
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-
     producer = Mock()
     producer.send.side_effect = pulsar.exceptions.Timeout("")
 
-    testmessager = TestMessager(client, "testbucket", "testprefix/", producer)
+    testmessager = TestMessager(s3_client, "testbucket", "testprefix/", producer)
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
-@mock_aws
-def test_catalogue_change_messager_processes_individual_changes():
+def test_catalogue_change_messager_processes_individual_changes(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
@@ -274,14 +271,11 @@ def test_catalogue_change_messager_processes_individual_changes():
                 ),
             )
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-    client.put_object(Bucket="testbucket", Key="testprefix-out/path/k1", Body="k1")
+    s3_client.put_object(Bucket="testbucket", Key="testprefix-out/path/k1", Body="k1")
 
     producer = Mock()
 
-    testmessager = TestCatalogueChangeMessager(client, "testbucket", "testprefix-out/", producer)
+    testmessager = TestCatalogueChangeMessager(s3_client, "testbucket", "testprefix-out/", producer)
     testmsg = pulsar_message_from_dict(
         {
             "id": "harvest-source-id",
@@ -302,7 +296,7 @@ def test_catalogue_change_messager_processes_individual_changes():
     failures = testmessager.consume(testmsg)
     assert failures == Messager.Failures(permanent=False, temporary=False)
 
-    obj1 = client.get_object(Bucket="testbucket", Key="testprefix-out/path/k1")
+    obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix-out/path/k1")
     assert str(obj1["Body"].read(), "utf-8") == (
         "Updated: input_bucket='testbucket-in', "
         + "input_key='testprefix-in/path/k1', "
@@ -311,7 +305,7 @@ def test_catalogue_change_messager_processes_individual_changes():
         + "target='target-path'"
     )
 
-    obj2 = client.get_object(Bucket="testbucket", Key="testprefix-out/path2/k2")
+    obj2 = s3_client.get_object(Bucket="testbucket", Key="testprefix-out/path2/k2")
     assert str(obj2["Body"].read(), "utf-8") == (
         "Updated: input_bucket='testbucket-in', "
         + "input_key='testprefix-in/path2/k2', "
@@ -320,7 +314,7 @@ def test_catalogue_change_messager_processes_individual_changes():
         + "target='target-path'"
     )
 
-    obj3 = client.get_object(Bucket="testbucket", Key="testprefix-out/path/k3")
+    obj3 = s3_client.get_object(Bucket="testbucket", Key="testprefix-out/path/k3")
     assert str(obj3["Body"].read(), "utf-8") == (
         "Updated: input_bucket='testbucket-in', "
         + "input_key='testprefix-in/path/k3', "
@@ -329,7 +323,7 @@ def test_catalogue_change_messager_processes_individual_changes():
         + "target='target-path'"
     )
 
-    obj4 = client.get_object(Bucket="testbucket", Key="testprefix-out/path/k4")
+    obj4 = s3_client.get_object(Bucket="testbucket", Key="testprefix-out/path/k4")
     assert str(obj4["Body"].read(), "utf-8") == (
         "Deleted: input_bucket='testbucket-in', "
         + "input_key='testprefix-in/path/k4', "
@@ -361,8 +355,7 @@ def test_catalogue_change_messager_processes_individual_changes():
     }
 
 
-@mock_aws
-def test_catalogue_change_messager_aggregates_individual_failures():
+def test_catalogue_change_messager_aggregates_individual_failures(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
@@ -380,14 +373,9 @@ def test_catalogue_change_messager_aggregates_individual_failures():
         ) -> Sequence[Messager.Action]:
             return []
 
-    # conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    # conn.create_bucket(Bucket="testbucket")
-    # client.put_object(Bucket="testbucket", Key="testprefix-out/path/k1", Body="k1")
-
     producer = Mock()
 
-    testmessager = TestCatalogueChangeMessager(client, "testbucket", "testprefix-out/", producer)
+    testmessager = TestCatalogueChangeMessager(s3_client, "testbucket", "testprefix-out/", producer)
     testmsg = pulsar_message_from_dict(
         {
             "id": "harvest-source-id",
@@ -415,8 +403,7 @@ def test_catalogue_change_messager_aggregates_individual_failures():
     )
 
 
-@mock_aws
-def test_stac_change_messager_processes_only_stac():
+def test_stac_change_messager_processes_only_stac(s3_client):
     class TestCatalogueChangeMessager(CatalogueSTACChangeMessager):
         def process_update_stac(
             self, stac: dict, cat_path: str, source: str, target: str
@@ -436,29 +423,25 @@ def test_stac_change_messager_processes_only_stac():
         ) -> Sequence[Messager.Action]:
             return []
 
-    conn = boto3.resource("s3")
-    client = boto3.client("s3")
-    conn.create_bucket(Bucket="testbucket")
-
-    client.put_object(
+    s3_client.put_object(
         Bucket="testbucket",
         Key="testprefix-in/path/k1",
         ContentType="application/json",
         Body=b"notjson",
     )
 
-    client.put_object(
+    s3_client.put_object(
         Bucket="testbucket", Key="testprefix-in/path/k2", ContentType="text/plain", Body=b"notjson"
     )
 
-    client.put_object(
+    s3_client.put_object(
         Bucket="testbucket",
         Key="testprefix-in/path/k3",
         ContentType="application/json",
         Body=b'{"not": "stac"}',
     )
 
-    client.put_object(
+    s3_client.put_object(
         Bucket="testbucket",
         Key="testprefix-in/path/k4",
         ContentType="application/json",
@@ -472,7 +455,7 @@ def test_stac_change_messager_processes_only_stac():
         ),
     )
 
-    testmessager = TestCatalogueChangeMessager(client, "testbucket", "testprefix-out/")
+    testmessager = TestCatalogueChangeMessager(s3_client, "testbucket", "testprefix-out/")
     testmsg = pulsar_message_from_dict(
         {
             "id": "harvest-source-id",
