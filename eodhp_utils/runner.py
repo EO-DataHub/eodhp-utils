@@ -2,8 +2,20 @@ import os
 
 from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType
 
+from eodhp_utils.messagers import CatalogueChangeMessager
 
-def run(messagers_dict: dict, subscription_name: str):
+pulsar_client = None
+
+
+def get_pulsar_client():
+    global pulsar_client
+    if pulsar_client is None:
+        pulsar_url = os.environ.get("PULSAR_URL")
+        pulsar_client = Client(pulsar_url)
+    return pulsar_client
+
+
+def run(messagers: dict[str, CatalogueChangeMessager], subscription_name: str):
     """Run loop to monitor arrival of pulsar messages on a given topic.
 
     Example usage:
@@ -16,13 +28,12 @@ def run(messagers_dict: dict, subscription_name: str):
     )
     """
 
-    pulsar_url = os.environ.get("PULSAR_URL")
-    client = Client(pulsar_url)
-
-    topics = list(messagers_dict.keys())
+    topics = list(messagers.keys())
 
     max_redelivery_count = 3
     delay_ms = 30000
+
+    client = get_pulsar_client()
 
     consumer = client.subscribe(
         topic=topics,
@@ -40,7 +51,7 @@ def run(messagers_dict: dict, subscription_name: str):
 
         topic_name = pulsar_message.topic_name().split("/")[-1]
 
-        messager = messagers_dict[topic_name]
+        messager = messagers[topic_name]
 
         failures = messager.consume(pulsar_message)
 
