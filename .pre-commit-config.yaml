@@ -17,10 +17,17 @@ repos:
           args: [ --check, --diff, --profile, black ]
 
   -   repo: https://github.com/psf/black
-      rev: 22.10.0
+      rev: 24.10.0
       hooks:
       -   id: black
           args: [ --check ]
+
+  -   repo: https://github.com/abravalheri/validate-pyproject
+      rev: v0.18
+      hooks:
+      - id: validate-pyproject
+        # Optional extra validations from SchemaStore:
+        additional_dependencies: ["validate-pyproject-schema-store[all]"]
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
