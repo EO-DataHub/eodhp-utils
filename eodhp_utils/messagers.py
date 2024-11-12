@@ -156,6 +156,7 @@ class Messager[MSGTYPE](ABC):
         bucket: str = None  # Defaults to messager.output_bucket
         file_body: str
         mime_type: str = "application/json"
+        cache_control: str = "max-age=0"
 
     @dataclasses.dataclass(kw_only=True)
     class OutputFileAction(S3Action):
@@ -298,7 +299,11 @@ class Messager[MSGTYPE](ABC):
                     logging.info(f"Deleted {key} in {bucket}")
                 else:
                     self.s3_client.put_object(
-                        Body=action.file_body, Bucket=bucket, Key=key, ContentType=action.mime_type
+                        Body=action.file_body,
+                        Bucket=bucket,
+                        Key=key,
+                        ContentType=action.mime_type,
+                        CacheControl=action.cache_control,
                     )
 
                     logging.info(f"Updated/created {key} in {bucket}")
@@ -433,7 +438,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                             target,
                         )
 
-                    logging.debug("f{entry_actions=}")
+                    logging.debug(f"{entry_actions=}")
                     all_actions += entry_actions
                 except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as e:
                     if _is_boto_error_temporary(e):
