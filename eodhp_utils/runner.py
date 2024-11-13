@@ -36,7 +36,6 @@ def run(messagers: dict[str, CatalogueChangeMessager], subscription_name: str):
     except PackageNotFoundError:
         # Not installed as a package, eg running directly from Git clone.
         logging.info("eodhp_utils runner starting from dev environment")
-        pass
 
     topics = list(messagers.keys())
 
