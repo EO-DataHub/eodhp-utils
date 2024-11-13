@@ -501,6 +501,8 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
             return []
 
+        logging.warning("ZZZZZZZZZZZZZZZZZZZZZ")
+
         return self.process_update_stac(entry_body, cat_path, source, target)
 
     @abstractmethod
