@@ -499,6 +499,10 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
         self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
     ) -> Sequence[CatalogueChangeMessager.Action]:
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
+
+            logging.warning("YYYYYYYYYYYYYYYYYYYYYYYYYY")
+            logging.warning(entry_body)
+            logging.warning(type(entry_body))
             return []
 
         logging.warning("ZZZZZZZZZZZZZZZZZZZZZ")
