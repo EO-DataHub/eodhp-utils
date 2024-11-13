@@ -1,4 +1,6 @@
+import logging
 import os
+from importlib.metadata import PackageNotFoundError, version
 
 from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType
 
@@ -27,6 +29,14 @@ def run(messagers: dict[str, CatalogueChangeMessager], subscription_name: str):
         "annotations-ingester",
     )
     """
+
+    try:
+        __version__ = version("eodhp_utils")
+        logging.info(f"eodhp-utils runner starting, version {__version__}")
+    except PackageNotFoundError:
+        # Not installed as a package, eg running directly from Git clone.
+        logging.info("eodhp_utils runner starting from dev environment")
+        pass
 
     topics = list(messagers.keys())
 
