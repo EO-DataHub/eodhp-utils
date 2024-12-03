@@ -2,11 +2,13 @@ import logging
 import os
 from importlib.metadata import PackageNotFoundError, version
 
+import boto3
 from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
 
 pulsar_client = None
+aws_client = None
 
 
 def get_pulsar_client():
@@ -15,6 +17,22 @@ def get_pulsar_client():
         pulsar_url = os.environ.get("PULSAR_URL")
         pulsar_client = Client(pulsar_url)
     return pulsar_client
+
+
+def get_boto3_session():
+    global aws_client
+    if not aws_client:
+        aws_client = boto3.session.Session(
+            # AWS_ACCESS_KEY_ID is the standard one AWS tools use. AWS_ACCESS_KEY has been widely
+            # used in EODH.
+            #
+            # If these are not set then Boto will look in locations like ~/.aws/credentials.
+            aws_access_key_id=(
+                os.environ.get("AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID")
+            ),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
+        )
+    return aws_client
 
 
 def run(messagers: dict[str, CatalogueChangeMessager], subscription_name: str):
