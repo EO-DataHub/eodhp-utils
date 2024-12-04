@@ -157,17 +157,19 @@ def test_takeover_results_in_pause():
         mock_takeover_message = mock.MagicMock(name="takeover-message")
         mock_takeover_message.topic_name.return_value = f"x/{eodhp_utils.runner.DEBUG_TOPIC}"
         mock_takeover_message.data.return_value = b'{"suspend_subscription": "test-subscription"}'
-        mock_takeover_message.publish_timestamp = 1000
+        mock_takeover_message.publish_timestamp.return_value = 1000
 
         # We mock the following five steps:
-        #  - Time 50: two takeover messages received, sleep until 5001, real message
+        #  - Time 50: two takeover messages received, sleep until 6001
+        #  - Time 6010: no takeover messages, real message
         #  - Time 7700: takeover message received, no sleep because message too old, real message received
         #
         # Note: logger calls time.time()
-        mock_time.time.side_effect = [0.050, 7.7]
+        mock_time.time.side_effect = [0.050, 6.01, 7.7]
         mock_consumer.receive.side_effect = [
             mock_takeover_message,
             mock_takeover_message,
+            pulsar.Timeout(),
             pulsar.Timeout(),
             mock_message,
             mock_takeover_message,
