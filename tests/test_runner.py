@@ -3,6 +3,8 @@ from argparse import Action
 from typing import Sequence
 from unittest import mock
 
+import pulsar
+
 import eodhp_utils
 import eodhp_utils.runner
 from eodhp_utils import runner
@@ -53,7 +55,7 @@ def test_messagers_given_messages():
                 return mock_message
 
             # Takeover reception
-            raise TimeoutError()
+            raise pulsar.Timeout()
 
         mock_consumer.receive.side_effect = receive_mock
         mock_message.topic_name.return_value = "x/test-topic"
@@ -108,11 +110,11 @@ def test_takeover_sends_takeover_messages():
         #  - Time 7600: takeover message sent, no message received
         mock_time.side_effect = [50, 2600, 5150, 6000, 7700]
         mock_consumer.receive.side_effect = [
-            TimeoutError(),
-            TimeoutError(),
-            TimeoutError(),
+            pulsar.Timeout(),
+            pulsar.Timeout(),
+            pulsar.Timeout(),
             mock_message,
-            TimeoutError(),
+            pulsar.Timeout(),
         ]
 
         runner.run(
@@ -162,20 +164,20 @@ def test_takeover_results_in_pause():
         #  - Time 7700: takeover message received, no sleep because message too old, real message received
         #
         # Note: logger calls time.time()
-        mock_time.time.side_effect = [50, 7700]
+        mock_time.time.side_effect = [0.050, 7.7]
         mock_consumer.receive.side_effect = [
             mock_takeover_message,
             mock_takeover_message,
-            TimeoutError(),
+            pulsar.Timeout(),
             mock_message,
             mock_takeover_message,
-            TimeoutError(),
+            pulsar.Timeout(),
             mock_message,
         ]
 
         runner.run({"test-topic": mock_messager}, "test-subscription", msg_limit=2)
 
-        mock_time.sleep.assert_called_once_with(4951.0)
+        mock_time.sleep.assert_called_once_with(5.95)
 
         # assert_has_calls includes extra calls which were not made - no idea why
         assert mock_messager.consume.call_args_list == [

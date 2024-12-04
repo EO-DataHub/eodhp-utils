@@ -12,7 +12,7 @@ from eodhp_utils.messagers import CatalogueChangeMessager
 pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
-SUSPEND_TIME = 5000
+SUSPEND_TIME = 5
 
 
 def get_pulsar_client(pulsar_url=None):
