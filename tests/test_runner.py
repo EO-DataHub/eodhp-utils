@@ -4,6 +4,7 @@ from typing import Sequence
 from unittest import mock
 
 import eodhp_utils
+import eodhp_utils.runner
 from eodhp_utils import runner
 from eodhp_utils.messagers import Messager
 
@@ -59,6 +60,21 @@ def test_setup_logging_doesnt_error():
     eodhp_utils.runner.setup_logging(1)
     eodhp_utils.runner.setup_logging(2)
     eodhp_utils.runner.setup_logging(3)
+
+
+def test_pulsar_client_uses_arg_over_env_when_set():
+    with (
+        mock.patch("eodhp_utils.runner.Client") as pulsar_client,
+        mock.patch.dict(os.environ, {"PULSAR_URL": "pulsar://example.com/2"}),
+    ):
+        eodhp_utils.runner.get_pulsar_client("pulsar://example.com/1")
+
+        eodhp_utils.runner.pulsar_client = None
+        eodhp_utils.runner.get_pulsar_client()
+
+        pulsar_client.assert_has_calls(
+            (mock.call("pulsar://example.com/1"), mock.call("pulsar://example.com/2"))
+        )
 
 
 def test_takeover_sends_takeover_messages():

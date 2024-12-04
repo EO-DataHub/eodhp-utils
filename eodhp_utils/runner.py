@@ -15,10 +15,10 @@ DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5000
 
 
-def get_pulsar_client():
+def get_pulsar_client(pulsar_url=None):
     global pulsar_client
     if pulsar_client is None:
-        pulsar_url = os.environ.get("PULSAR_URL")
+        pulsar_url = pulsar_url or os.environ.get("PULSAR_URL")
         pulsar_client = Client(pulsar_url)
     return pulsar_client
 
@@ -43,6 +43,13 @@ LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 
 def setup_logging(verbosity=0):
+    """
+    This should be called based on command line arguments. eg:
+
+    @click.option('-v', '--verbose', count=True)
+    def my_cli(verbose):
+        setup_logging(verbosity=verbose)
+    """
     if verbosity == 0:
         logging.getLogger("botocore").setLevel(logging.CRITICAL)
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
@@ -69,6 +76,16 @@ def setup_logging(verbosity=0):
         logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
 
 
+def log_component_version(component_name):
+    """Logs a version number for a Python component using setuptools-git-versioning."""
+    try:
+        __version__ = version(component_name)
+        logging.info(f"{component_name} starting, version {__version__}")
+    except PackageNotFoundError:
+        # Not installed as a package, eg running directly from Git clone.
+        logging.info("{component_name} starting from dev environment")
+
+
 def run(
     messagers: dict[str, CatalogueChangeMessager],
     subscription_name: str,
@@ -93,13 +110,7 @@ def run(
       - Inject messages
       - Be guaranteed that your development component will receive them
     """
-
-    try:
-        __version__ = version("eodhp_utils")
-        logging.info(f"eodhp-utils runner starting, version {__version__}")
-    except PackageNotFoundError:
-        # Not installed as a package, eg running directly from Git clone.
-        logging.info("eodhp_utils runner starting from dev environment")
+    log_component_version("eodhp_utils")
 
     topics = list(messagers.keys())
 
