@@ -91,6 +91,7 @@ def run(
     subscription_name: str,
     takeover_mode=False,
     msg_limit=None,
+    pulsar_url=None,
 ):
     """Run loop to monitor arrival of pulsar messages on a given topic.
 
@@ -134,7 +135,7 @@ def run(
     max_redelivery_count = 3
     delay_ms = 30000
 
-    client = get_pulsar_client()
+    client = get_pulsar_client(pulsar_url=pulsar_url)
 
     consumer = client.subscribe(
         topic=topics,
