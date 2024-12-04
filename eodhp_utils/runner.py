@@ -205,7 +205,7 @@ def run(
 
         try:
             pulsar_message = consumer.receive(
-                suspension_remaining * 1000 if suspension_remaining > 0 else None
+                int(suspension_remaining * 1000) if suspension_remaining > 0 else None
             )
         except Timeout:
             continue
