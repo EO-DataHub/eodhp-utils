@@ -5,7 +5,7 @@ import time
 from importlib.metadata import PackageNotFoundError, version
 
 import boto3.session
-from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType
+from pulsar import Client, ConsumerDeadLetterPolicy, ConsumerType, Timeout
 
 from eodhp_utils.messagers import CatalogueChangeMessager
 
@@ -189,7 +189,7 @@ def run(
                             suspended_until,
                             pulsar_message.publish_timestamp / 1000.0 + SUSPEND_TIME,
                         )
-            except TimeoutError:
+            except Timeout:
                 pass
 
             # Wait for takeover expiry
@@ -207,7 +207,7 @@ def run(
             pulsar_message = consumer.receive(
                 suspension_remaining * 1000 if suspension_remaining > 0 else None
             )
-        except TimeoutError:
+        except Timeout:
             continue
 
         topic_name = pulsar_message.topic_name().split("/")[-1]
