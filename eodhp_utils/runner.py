@@ -115,7 +115,8 @@ def run(
         takeover_msg = json.dumps({"suspend_subscription": subscription_name})
 
     while msg_limit is None or msg_limit > 0:
-        msg_limit -= 1
+        if msg_limit is not None:
+            msg_limit -= 1
 
         now = time.time()
         suspension_remaining = suspended_until - now
