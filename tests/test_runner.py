@@ -131,7 +131,7 @@ def test_takeover_results_in_pause():
     # Tests that, when a takeover happens, other consumers pause message reception.
     with (
         mock.patch("eodhp_utils.runner.get_pulsar_client") as mock_getclient,
-        mock.patch("eodhp_utils.runner.time.time") as mock_time,
+        mock.patch("eodhp_utils.runner.time") as mock_time,
     ):
         mock_consumer = mock.MagicMock(name="consumer")
         mock_getclient().subscribe.return_value = mock_consumer
@@ -153,7 +153,7 @@ def test_takeover_results_in_pause():
         #  - Time 5100: takeover message received
         #  - Time 6000: ordinary message received
         #  - Time 7600: takeover message received
-        mock_time.side_effect = [50, 2600, 5150, 6000, 7700]
+        mock_time.time.side_effect = [50, 2600, 5150, 6000, 7700]
         mock_consumer.receive.side_effect = [
             mock_takeover_message,
             mock_takeover_message,

@@ -166,10 +166,12 @@ def run(
         if suspension_remaining <= 0:
             if takeover_mode:
                 # Confirm our takeover
+                logging.debug("Sending takeover message")
                 takeover_producer.send(bytes(takeover_msg, "utf-8"))
                 suspended_until = now + SUSPEND_TIME / 2
             else:
                 # Suspension has expired.
+                logging.warning("Takeover expired, resuming message reception")
                 consumer.resume_message_listener()
 
         try:
@@ -184,6 +186,7 @@ def run(
         if topic_name == DEBUG_TOPIC:
             data_dict = json.loads(pulsar_message.data().decode("utf-8"))
             if data_dict.get("suspend_subscription") == subscription_name:
+                logging.warning("Takeover active, pausing message reception")
                 consumer.pause_message_listener()
                 suspended_until = max(
                     suspended_until, pulsar_message.publish_timestamp / 1000.0 + SUSPEND_TIME
