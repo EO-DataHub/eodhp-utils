@@ -177,7 +177,7 @@ def run(
             # Check for takeover messages.
             # Note:
             try:
-                takeover_consumer.seek(now - SUSPEND_TIME)
+                takeover_consumer.seek(int((now - SUSPEND_TIME) * 1000))
 
                 while True:
                     pulsar_message = takeover_consumer.receive(0)
