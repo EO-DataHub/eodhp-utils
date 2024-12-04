@@ -129,8 +129,6 @@ def run(
     #  - We ignore takeover messages.
     #
     suspended_until = 0
-    if not takeover_mode:
-        topics.append(DEBUG_TOPIC)
 
     max_redelivery_count = 3
     delay_ms = 30000
@@ -155,24 +153,55 @@ def run(
         )
 
         takeover_msg = json.dumps({"suspend_subscription": subscription_name})
+    else:
+        takeover_consumer = client.subscribe(
+            topic=DEBUG_TOPIC,
+            subscription_name=subscription_name + "-takeover",
+            consumer_type=ConsumerType.Shared,
+        )
 
     while msg_limit is None or msg_limit > 0:
         if msg_limit is not None:
             msg_limit -= 1
 
         now = time.time()
-        suspension_remaining = suspended_until - now
 
-        if suspension_remaining <= 0:
-            if takeover_mode:
+        if takeover_mode:
+            if suspended_until < now:
                 # Confirm our takeover
                 logging.debug("Sending takeover message")
                 takeover_producer.send(bytes(takeover_msg, "utf-8"))
-                suspended_until = now + SUSPEND_TIME / 2
-            elif suspended_until != 0:
-                # Suspension has expired.
+                suspension_remaining = SUSPEND_TIME / 2
+                suspended_until = now + suspension_remaining
+        else:
+            # Check for takeover messages.
+            # Note:
+            try:
+                takeover_consumer.seek(now - SUSPEND_TIME)
+
+                while True:
+                    pulsar_message = takeover_consumer.receive(0)
+                    takeover_consumer.acknowledge(pulsar_message)
+
+                    data_dict = json.loads(pulsar_message.data().decode("utf-8"))
+                    if data_dict.get("suspend_subscription") == subscription_name:
+                        suspended_until = max(
+                            suspended_until,
+                            pulsar_message.publish_timestamp / 1000.0 + SUSPEND_TIME,
+                        )
+            except TimeoutError:
+                pass
+
+            # Wait for takeover expiry
+            suspension_remaining = suspended_until - now
+
+            if suspension_remaining > 0:
+                logging.warning(
+                    f"Takeover active, pausing message reception for {suspension_remaining}"
+                )
+                time.sleep(suspension_remaining)
+                suspension_remaining = 0
                 logging.warning("Takeover expired, resuming message reception")
-                consumer.resume_message_listener()
 
         try:
             pulsar_message = consumer.receive(
@@ -182,17 +211,6 @@ def run(
             continue
 
         topic_name = pulsar_message.topic_name().split("/")[-1]
-
-        if topic_name == DEBUG_TOPIC:
-            data_dict = json.loads(pulsar_message.data().decode("utf-8"))
-            if data_dict.get("suspend_subscription") == subscription_name:
-                logging.warning("Takeover active, pausing message reception")
-                consumer.pause_message_listener()
-                suspended_until = max(
-                    suspended_until, pulsar_message.publish_timestamp / 1000.0 + SUSPEND_TIME
-                )
-
-            continue
 
         messager = messagers[topic_name]
 

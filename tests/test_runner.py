@@ -46,7 +46,16 @@ def test_messagers_given_messages():
         mock_messager.consume.return_value.any_temporary.return_value = False
 
         # Mock reception of a message from a test-topic.
-        mock_message = mock_consumer.receive(None)
+        mock_message = mock.MagicMock(name="message")
+
+        def receive_mock(timeout):
+            if timeout is None:
+                return mock_message
+
+            # Takeover reception
+            raise TimeoutError()
+
+        mock_consumer.receive.side_effect = receive_mock
         mock_message.topic_name.return_value = "x/test-topic"
 
         runner.run({"test-topic": mock_messager}, "test-subscription", msg_limit=1)
@@ -132,6 +141,7 @@ def test_takeover_results_in_pause():
     with (
         mock.patch("eodhp_utils.runner.get_pulsar_client") as mock_getclient,
         mock.patch("eodhp_utils.runner.time") as mock_time,
+        mock.patch("eodhp_utils.runner.logging"),  # logging calls time.time
     ):
         mock_consumer = mock.MagicMock(name="consumer")
         mock_getclient().subscribe.return_value = mock_consumer
@@ -142,28 +152,33 @@ def test_takeover_results_in_pause():
         mock_message = mock.MagicMock(name="message")
         mock_message.topic_name.return_value = "x/test-topic"
 
-        mock_takeover_message = mock.MagicMock(name="message")
+        mock_takeover_message = mock.MagicMock(name="takeover-message")
         mock_takeover_message.topic_name.return_value = f"x/{eodhp_utils.runner.DEBUG_TOPIC}"
         mock_takeover_message.data.return_value = b'{"suspend_subscription": "test-subscription"}'
-        mock_takeover_message.publish_timestamp = -5000
+        mock_takeover_message.publish_timestamp = 1000
 
         # We mock the following five steps:
-        #  - Time 50: takeover message received
-        #  - Time 2600: takeover message received
-        #  - Time 5100: takeover message received
-        #  - Time 6000: ordinary message received
-        #  - Time 7600: takeover message received
-        mock_time.time.side_effect = [50, 2600, 5150, 6000, 7700]
+        #  - Time 50: two takeover messages received, sleep until 5001, real message
+        #  - Time 7700: takeover message received, no sleep because message too old, real message received
+        #
+        # Note: logger calls time.time()
+        mock_time.time.side_effect = [50, 7700]
         mock_consumer.receive.side_effect = [
             mock_takeover_message,
             mock_takeover_message,
-            mock_takeover_message,
+            TimeoutError(),
             mock_message,
             mock_takeover_message,
+            TimeoutError(),
+            mock_message,
         ]
 
-        runner.run({"test-topic": mock_messager}, "test-subscription", msg_limit=5)
+        runner.run({"test-topic": mock_messager}, "test-subscription", msg_limit=2)
 
-        mock_messager.consume.assert_called_once_with(mock_message)
-        mock_consumer.pause_message_listener.assert_has_calls([mock.call()] * 4)
-        mock_consumer.resume_message_listener.assert_has_calls([mock.call()] * 3)
+        mock_time.sleep.assert_called_once_with(4951.0)
+
+        # assert_has_calls includes extra calls which were not made - no idea why
+        assert mock_messager.consume.call_args_list == [
+            mock.call(mock_message),
+            mock.call(mock_message),
+        ]
