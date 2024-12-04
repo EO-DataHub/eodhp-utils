@@ -166,4 +166,4 @@ def test_takeover_results_in_pause():
 
         mock_messager.consume.assert_called_once_with(mock_message)
         mock_consumer.pause_message_listener.assert_has_calls([mock.call()] * 4)
-        mock_consumer.resume_message_listener.assert_has_calls([mock.call()] * 4)
+        mock_consumer.resume_message_listener.assert_has_calls([mock.call()] * 3)

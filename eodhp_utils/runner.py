@@ -169,7 +169,7 @@ def run(
                 logging.debug("Sending takeover message")
                 takeover_producer.send(bytes(takeover_msg, "utf-8"))
                 suspended_until = now + SUSPEND_TIME / 2
-            else:
+            elif suspended_until != 0:
                 # Suspension has expired.
                 logging.warning("Takeover expired, resuming message reception")
                 consumer.resume_message_listener()
