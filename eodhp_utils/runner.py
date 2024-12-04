@@ -175,7 +175,6 @@ def run(
                 suspended_until = now + suspension_remaining
         else:
             # Check for takeover messages.
-            # Note:
             try:
                 takeover_consumer.seek(int((now - SUSPEND_TIME) * 1000))
 
@@ -205,7 +204,9 @@ def run(
 
         try:
             pulsar_message = consumer.receive(
-                int(suspension_remaining * 1000) if suspension_remaining > 0 else None
+                int(suspension_remaining * 1000)
+                if suspension_remaining > 0
+                else int(SUSPEND_TIME * 1000)
             )
         except Timeout:
             continue

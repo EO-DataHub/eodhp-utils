@@ -51,7 +51,7 @@ def test_messagers_given_messages():
         mock_message = mock.MagicMock(name="message")
 
         def receive_mock(timeout):
-            if timeout is None:
+            if timeout == eodhp_utils.runner.SUSPEND_TIME * 1000:
                 return mock_message
 
             # Takeover reception
