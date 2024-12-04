@@ -54,6 +54,13 @@ def test_messagers_given_messages():
         mock_consumer.acknowledge.assert_called_once_with(mock_message)
 
 
+def test_setup_logging_doesnt_error():
+    eodhp_utils.runner.setup_logging(0)
+    eodhp_utils.runner.setup_logging(1)
+    eodhp_utils.runner.setup_logging(2)
+    eodhp_utils.runner.setup_logging(3)
+
+
 def test_takeover_sends_takeover_messages():
     # Tests that, in takover mode, we send a takeover message every 2.5S.
     with (

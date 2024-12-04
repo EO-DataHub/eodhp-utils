@@ -39,6 +39,36 @@ def get_boto3_session():
     return aws_client
 
 
+LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+
+
+def setup_logging(verbosity=0):
+    if verbosity == 0:
+        logging.getLogger("botocore").setLevel(logging.CRITICAL)
+        logging.getLogger("boto3").setLevel(logging.CRITICAL)
+        logging.getLogger("urllib3").setLevel(logging.CRITICAL)
+
+        logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT)
+    elif verbosity == 1:
+        logging.getLogger("botocore").setLevel(logging.ERROR)
+        logging.getLogger("boto3").setLevel(logging.ERROR)
+        logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    elif verbosity == 2:
+        logging.getLogger("botocore").setLevel(logging.WARNING)
+        logging.getLogger("boto3").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    elif verbosity > 2:
+        logging.getLogger("botocore").setLevel(logging.DEBUG)
+        logging.getLogger("boto3").setLevel(logging.DEBUG)
+        logging.getLogger("urllib3").setLevel(logging.DEBUG)
+
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+
+
 def run(
     messagers: dict[str, CatalogueChangeMessager],
     subscription_name: str,
