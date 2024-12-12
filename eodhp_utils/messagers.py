@@ -2,7 +2,7 @@ import dataclasses
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Sequence, Union
+from typing import Optional, Sequence, Union
 
 import botocore
 import botocore.exceptions
@@ -377,7 +377,13 @@ class CatalogueChangeMessager(Messager[Message], ABC):
 
     @abstractmethod
     def process_update(
-        self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+        self,
+        input_bucket: str,
+        input_key: str,
+        cat_path: str,
+        source: str,
+        target: str,
+        workspace: str,
     ) -> Sequence[Messager.Action]: ...
 
     @abstractmethod
@@ -409,6 +415,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
         input_bucket = input_change_msg.get("bucket_name")
         source = input_change_msg.get("source")
         target = input_change_msg.get("target")
+        workspace = input_change_msg.get("workspace")
 
         all_actions = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
@@ -436,6 +443,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                             cat_path,
                             source,
                             target,
+                            workspace,
                         )
 
                     logging.debug(f"{entry_actions=}")
@@ -467,7 +475,13 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
     """
 
     def process_update(
-        self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+        self,
+        input_bucket: str,
+        input_key: str,
+        cat_path: str,
+        source: str,
+        target: str,
+        workspace: str,
     ) -> Sequence[Messager.Action]:
         get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
         entry_body = get_result["Body"].read()
@@ -480,11 +494,16 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
             # Not a JSON file - consume it as a string
             logging.info(f"File {input_key} is not valid JSON.")
 
-        return self.process_update_body(entry_body, cat_path, source, target)
+        return self.process_update_body(entry_body, cat_path, source, target, workspace)
 
     @abstractmethod
     def process_update_body(
-        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
+        self,
+        entry_body: Union[dict, str],
+        cat_path: str,
+        source: str,
+        target: str,
+        workspace: Optional[str] = None,
     ) -> Sequence[CatalogueChangeMessager.Action]: ...
 
 
@@ -497,7 +516,7 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
     """
 
     def process_update_body(
-        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
+        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str, workspace: str
     ) -> Sequence[CatalogueChangeMessager.Action]:
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
             return []

@@ -246,7 +246,13 @@ def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
 def test_catalogue_change_messager_processes_individual_changes(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
-            self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+            self,
+            input_bucket: str,
+            input_key: str,
+            cat_path: str,
+            source: str,
+            target: str,
+            workspace: str,
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
@@ -358,7 +364,13 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
 def test_catalogue_change_messager_aggregates_individual_failures(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
-            self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+            self,
+            input_bucket: str,
+            input_key: str,
+            cat_path: str,
+            source: str,
+            target: str,
+            workspace: str,
         ) -> Sequence[Messager.Action]:
             if cat_path.endswith("permerror"):
                 raise ValueError("test")
