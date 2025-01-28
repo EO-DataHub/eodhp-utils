@@ -386,10 +386,11 @@ class CatalogueChangeMessager(Messager[Message], ABC):
     ) -> Sequence[Messager.Action]: ...
 
     def gen_empty_catalogue_message(self, msg: Message) -> dict:
+        print(f"bucket name is {self.input_change_msg.get("bucket_name")}")
         return {
             "id": self.input_change_msg.get("id"),
             "workspace": self.input_change_msg.get("workspace"),
-            "bucket_name": self.output_bucket,
+            "bucket_name": self.input_change_msg.get("bucket_name"),
             "source": self.input_change_msg.get("source"),
             "target": self.input_change_msg.get("target"),
         }
