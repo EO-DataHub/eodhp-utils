@@ -257,6 +257,9 @@ class Messager[MSGTYPE](ABC):
         msg["added_keys"] = cat_changes.added
         msg["updated_keys"] = cat_changes.updated
         msg["deleted_keys"] = cat_changes.deleted
+        print(f"added keys {cat_changes.added}")
+        print(f"added keys {cat_changes.updated}")
+        print(f"added keys {cat_changes.deleted}")
 
         return msg
 
