@@ -482,7 +482,7 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
             if e.response["Error"]["Code"] == "NoSuchKey" and retries < 3:
                 logging.warning("Key was not present, trying again")
                 retries += 1
-                self.process_update(input_bucket, input_key, cat_path, source, target, retries)
+                return self.process_update(input_bucket, input_key, cat_path, source, target, retries)
             else:
                 raise
         entry_body = get_result["Body"].read()
