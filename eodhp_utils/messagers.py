@@ -467,9 +467,26 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
     """
 
     def process_update(
-        self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
+        self,
+        input_bucket: str,
+        input_key: str,
+        cat_path: str,
+        source: str,
+        target: str,
+        retries: int = 0,
     ) -> Sequence[Messager.Action]:
-        get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
+        try:
+            get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
+        except botocore.exceptions.ClientError as e:
+            # On some occasions we have seen Pulsar messages arrive before the file is in S3.
+            if e.response["Error"]["Code"] == "NoSuchKey" and retries < 3:
+                logging.warning("Key was not present, trying again")
+                retries += 1
+                return self.process_update(
+                    input_bucket, input_key, cat_path, source, target, retries
+                )
+            else:
+                raise
         entry_body = get_result["Body"].read()
 
         # Transformer needs updating to ensure that content type is set to this
