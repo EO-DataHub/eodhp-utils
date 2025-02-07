@@ -248,28 +248,28 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
         def process_update(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
         ) -> Sequence[Messager.Action]:
-            return (
+            return [
                 Messager.OutputFileAction(
                     file_body=bytes(
                         f"Updated: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}",
                         "utf-8",
                     ),
                     cat_path=cat_path,
-                ),
-            )
+                )
+            ]
 
         def process_delete(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
         ) -> Sequence[Messager.Action]:
-            return (
+            return [
                 Messager.OutputFileAction(
                     file_body=bytes(
                         f"Deleted: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}",
                         "utf-8",
                     ),
                     cat_path=cat_path,
-                ),
-            )
+                )
+            ]
 
     s3_client.put_object(Bucket="testbucket", Key="testprefix-out/path/k1", Body="k1")
 
@@ -338,7 +338,7 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
     assert json.loads(message) == {
         "id": "harvest-source-id",
         "workspace": "workspace-id",
-        "bucket_name": "testbucket",
+        "bucket_name": "testbucket-in",
         "source": "source-path",
         "target": "target-path",
         # Note: these depend on the actions returned by process_* and the existing bucket contents.
