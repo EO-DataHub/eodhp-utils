@@ -1,14 +1,16 @@
 import dataclasses
 import json
 import logging
+import typing
 from abc import ABC, abstractmethod
-from typing import Sequence, Union
+from typing import Optional, Sequence, Union
 
 import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
 from pulsar import Message
+from pulsar.schema import BytesSchema, JsonSchema, Record, Schema
 
 import eodhp_utils
 import eodhp_utils.pulsar.messages
@@ -364,6 +366,14 @@ class Messager[MSGTYPE](ABC):
 
         return failures
 
+    @classmethod
+    def get_schema(cls) -> Optional[Schema]:
+        """
+        If this returns a non-None value then the consumer used to obtain messages for this
+        Messager must be registered using the Schema this returns.
+        """
+        return BytesSchema()
+
 
 class CatalogueChangeMessager(Messager[Message], ABC):
     """
@@ -529,3 +539,46 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
         source: str,
         target: str,
     ) -> Sequence[CatalogueChangeMessager.Action]: ...
+
+
+class PulsarJSONMessager[PAYLOADOBJ: Record](Messager[Message], ABC):
+    """
+    This is an abstract Messager subclass for consuming Pulsar messages whose payload follows
+    a Pulsar JSON schema defined by a Python object (PAYLOADOBJ) inheriting from
+    pulsar.schema.Record.
+
+    Subclasses should implement process_payload.
+    """
+
+    @classmethod
+    def get_schema(cls) -> Schema:
+        """
+        This returns a Pulsar Schema for the PAYLOADOBJ type. This is what Pulsar uses to convert
+        the encoded message into a Python object.
+        """
+        bases = typing.types.get_original_bases(cls)
+        for base in bases:
+            if typing.get_origin(base) == PulsarJSONMessager:
+                payloadobj_class = typing.get_args(base)[0]
+                return JsonSchema(payloadobj_class)
+
+        raise ValueError("cls doesn't inherit from PulsarJSONMessager")
+
+    @abstractmethod
+    def process_payload(self, obj: PAYLOADOBJ) -> Sequence[Messager.Action]: ...
+
+    def gen_empty_catalogue_message(self, msg):
+        # This is overridden due to a design flaw in Messagers: Messager assumes that all
+        # messagers are catalogue messagers rather than components that interact with Pulsar
+        # for other purposes.
+        raise NotImplementedError()
+
+    def process_msg(self, msg: Message) -> Sequence[Messager.Action]:
+        """
+        This passes the decoded payload from the Pulsar message to the subclass's
+        process_payload method.
+
+        This relies on the schema returned by get_schema having been passed to Pulsar when
+        registering the consumer.
+        """
+        return self.process_payload(msg.value())

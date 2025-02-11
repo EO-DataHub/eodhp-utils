@@ -3,6 +3,22 @@ import logging
 
 import jsonschema
 import jsonschema.exceptions
+from pulsar.schema import Double, JsonSchema, Record, Schema, String
+
+
+class BillingEvent(Record):
+    correlation_id = String()
+    uuid = String()
+    event_start = String()  # ISO datetime in UTC
+    event_end = String()  # ISO datetime in UTC
+    sku = String()
+    user = String()  # UUID for the user
+    workspace = String()  # workspace name
+    quantity = Double()
+
+
+def generate_billingevent_schema() -> Schema:
+    return JsonSchema(BillingEvent)
 
 
 def generate_harvest_schema():

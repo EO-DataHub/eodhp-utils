@@ -90,7 +90,8 @@ dev = [
     "isort",
     "validate-pyproject[all]",
     "pre-commit",
-    "moto"
+    "moto",
+    "faker",
 ]
 
 # List URLs that are relevant to your project

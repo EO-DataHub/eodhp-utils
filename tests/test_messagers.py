@@ -6,6 +6,7 @@ from unittest.mock import Mock
 
 import boto3
 import botocore
+import faker
 import moto
 import pulsar
 import pulsar.exceptions
@@ -16,8 +17,10 @@ from eodhp_utils.messagers import (
     CatalogueChangeMessager,
     CatalogueSTACChangeMessager,
     Messager,
+    PulsarJSONMessager,
     TemporaryFailure,
 )
+from eodhp_utils.pulsar.messages import BillingEvent
 
 SOURCE_PATH = "https://example.link.for.test/"
 TARGET = "/target_directory/"
@@ -486,3 +489,49 @@ def test_stac_change_messager_processes_only_stac(s3_client):
             cat_path="path/k4",
         ),
     ]
+
+
+@pytest.fixture
+def fake_billingevent():
+    fake = faker.Faker()
+
+    be = BillingEvent()
+    be.correlation_id = fake.uuid4()
+    be.uuid = fake.uuid4()
+    be.event_start = str(fake.date_time)
+    be.event_end = str(fake.date_time)
+    be.sku = fake.pystr(4, 10)
+    be.user = fake.uuid4()
+    be.workspace = fake.user_name()
+    be.quantity = fake.pyfloat()
+
+    return be
+
+
+def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):
+
+    class TestJSONMessager(PulsarJSONMessager[BillingEvent]):
+        billingevents_received = []
+
+        def process_payload(self, be):
+            self.billingevents_received.append(be)
+            print(f"{be=}")
+            return []
+
+    schema = TestJSONMessager.get_schema()
+
+    # This tests a round trip with the Schema without testing the message reception.
+    enced = schema.encode(fake_billingevent)
+    decd = schema.decode(enced)
+    assert decd == fake_billingevent
+
+    # This is a bit more dodgy because it knows about Pulsar client library internals.
+    # 'msg' is a fake Pulsar message on which .value() will work.
+    testmsg = Mock()
+    testmsg.data = Mock(return_value=schema.encode(fake_billingevent))
+    msg = Message._wrap(testmsg)
+    msg._schema = schema
+
+    testmessager = TestJSONMessager(None, None)
+    testmessager.consume(msg)
+    assert testmessager.billingevents_received == [fake_billingevent]
