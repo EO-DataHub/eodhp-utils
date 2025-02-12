@@ -103,7 +103,7 @@ class Messager[MSGTYPE](ABC):
           Write your tests to call process_msg directly.
 
       * Consuming Pulsar catalogue change messages only (ingester):
-          You have three choices, in decreasing preference:
+          You have four choices, in decreasing preference:
             * Inherit from CatalogueSTACChangeMessager and implement the process_update_stac and
               process_delete methods. For every new or changed STAC entry in the messages
               received by consume(), process_update_stac will be called with the STAC in
@@ -114,6 +114,10 @@ class Messager[MSGTYPE](ABC):
             * Inherit from CatalogueChangeMessager and implement process_update and process_delete.
               Your methods will be called with the location in the S3 bucket of the inputs but
               not the file contents.
+            * Inherit from PulsarJSONMessager and implement process_payload.
+              This is suitable for components outside the harvest pipeline that process
+              non-catalogue messages. The message format is described via Pulsar Schema
+              (by writing a Python class for it) and decoded before the messager is called.
 
           Return an empty list if no further action is needed.
 

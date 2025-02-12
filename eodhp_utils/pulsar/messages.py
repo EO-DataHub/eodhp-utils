@@ -3,6 +3,7 @@ import logging
 
 import jsonschema
 import jsonschema.exceptions
+from faker import Faker
 from pulsar.schema import Double, JsonSchema, Record, Schema, String
 
 
@@ -15,6 +16,30 @@ class BillingEvent(Record):
     user = String()  # UUID for the user
     workspace = String()  # workspace name
     quantity = Double()
+
+    @staticmethod
+    def get_fake():
+        """
+        This returns a fake BillingEvent - useful for tests.
+
+        This doesn't strictly belong here, but including it here (vs the tests directory),
+        means that services which use eodhp_utils can also use it.
+        """
+        fake = Faker()
+
+        be = BillingEvent()
+        be.correlation_id = fake.uuid4()
+        be.uuid = fake.uuid4()
+
+        start = fake.past_datetime("-30d")
+        be.event_start = start.isoformat()
+        be.event_end = (start + fake.time_delta("+10m")).isoformat()
+        be.sku = fake.pystr(4, 10)
+        be.user = fake.uuid4()
+        be.workspace = fake.user_name()
+        be.quantity = fake.pyfloat()
+
+        return be
 
 
 def generate_billingevent_schema() -> Schema:

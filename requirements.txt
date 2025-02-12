@@ -17,6 +17,8 @@ botocore==1.35.52
     #   s3transfer
 certifi==2024.8.30
     # via pulsar-client
+faker==36.1.0
+    # via eodhp-utils (pyproject.toml)
 jmespath==1.0.1
     # via
     #   boto3
@@ -41,5 +43,7 @@ s3transfer==0.10.3
     # via boto3
 six==1.16.0
     # via python-dateutil
+tzdata==2025.1
+    # via faker
 urllib3==2.2.3
     # via botocore

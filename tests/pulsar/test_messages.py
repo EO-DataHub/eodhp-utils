@@ -1,7 +1,5 @@
 import json
 
-import faker
-import faker.generator
 import jsonschema
 import pytest
 
@@ -90,17 +88,7 @@ def test_get_message_data__schema_fail(mock_message):
 def test_generate_billingevent_schema_encode_decode_restores_object():
     schema = generate_billingevent_schema()
 
-    fake = faker.Faker()
-
-    be = BillingEvent()
-    be.correlation_id = fake.uuid4()
-    be.uuid = fake.uuid4()
-    be.event_start = str(fake.date_time)
-    be.event_end = str(fake.date_time)
-    be.sku = fake.pystr(4, 10)
-    be.user = fake.uuid4()
-    be.workspace = fake.user_name()
-    be.quantity = fake.pyfloat()
+    be = BillingEvent.get_fake()
 
     enced = schema.encode(be)
     decd = schema.decode(enced)
