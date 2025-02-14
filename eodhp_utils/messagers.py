@@ -131,8 +131,8 @@ class Messager[MSGTYPE](ABC):
 
     def __init__(
         self,
-        s3_client,
-        output_bucket,
+        s3_client=None,
+        output_bucket=None,
         cat_output_prefix="",
         producer: pulsar.Producer = None,
     ):
