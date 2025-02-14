@@ -266,6 +266,15 @@ class Messager[MSGTYPE](ABC):
 
         return msg
 
+    def is_temporary_error(self, e: Exception):
+        """
+        This guesses whether an exception is a temporary or permanent error.
+
+        Subclasses may override this to handle exceptions not handled here. This handles only
+        boto and Pulsar exceptions.
+        """
+        return _is_boto_error_temporary(e) or _is_pulsar_error_temporary(e)
+
     def _runaction(self, action: Action, cat_changes: CatalogueChanges, failures: Failures):
         """
         Runs a single action. cat_changes is updated to add any catalogue changes we must publish
@@ -364,9 +373,12 @@ class Messager[MSGTYPE](ABC):
                 failures.temporary = True
             else:
                 failures.permanent = True
-        except Exception:
-            logging.exception("Permanent failure processing message %s", msg)
-            failures.permanent = True
+        except Exception as e:
+            logging.exception("Exception processing message %s", msg)
+            if self.is_temporary_error(e):
+                failures.temporary = True
+            else:
+                failures.permanent = True
 
         return failures
 
@@ -464,9 +476,11 @@ class CatalogueChangeMessager(Messager[Message], ABC):
                 except TemporaryFailure:
                     logging.exception(f"TemporaryFailure processing {key=}")
                     all_actions.append(Messager.FailureAction(key=key, permanent=False))
-                except Exception:
+                except Exception as e:
                     logging.exception(f"Exception processing {key=}")
-                    all_actions.append(Messager.FailureAction(key=key, permanent=True))
+                    all_actions.append(
+                        Messager.FailureAction(key=key, permanent=not self.is_temporary_error(e))
+                    )
 
         return all_actions
 
