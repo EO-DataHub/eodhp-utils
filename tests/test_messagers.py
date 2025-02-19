@@ -6,7 +6,6 @@ from unittest.mock import Mock
 
 import boto3
 import botocore
-import faker
 import moto
 import pulsar
 import pulsar.exceptions
@@ -493,19 +492,7 @@ def test_stac_change_messager_processes_only_stac(s3_client):
 
 @pytest.fixture
 def fake_billingevent():
-    fake = faker.Faker()
-
-    be = BillingEvent()
-    be.correlation_id = fake.uuid4()
-    be.uuid = fake.uuid4()
-    be.event_start = str(fake.date_time)
-    be.event_end = str(fake.date_time)
-    be.sku = fake.pystr(4, 10)
-    be.user = fake.uuid4()
-    be.workspace = fake.user_name()
-    be.quantity = fake.pyfloat()
-
-    return be
+    return BillingEvent.get_fake()
 
 
 def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):

@@ -5,9 +5,11 @@ import pytest
 
 from eodhp_utils.pulsar.messages import (
     BillingEvent,
+    WorkspaceSettings,
     generate_billingevent_schema,
     generate_harvest_schema,
     generate_schema,
+    generate_workspacesettings_schema,
     get_message_data,
 )
 
@@ -94,3 +96,14 @@ def test_generate_billingevent_schema_encode_decode_restores_object():
     decd = schema.decode(enced)
 
     assert decd == be
+
+
+def test_generate_workspacesettings_schema_encode_decode_restores_object():
+    schema = generate_workspacesettings_schema()
+
+    ws = WorkspaceSettings.get_fake()
+
+    enced = schema.encode(ws)
+    decd = schema.decode(enced)
+
+    assert decd == ws
