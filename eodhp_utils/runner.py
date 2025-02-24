@@ -73,7 +73,7 @@ def setup_logging(verbosity=0):
         logging.getLogger("boto3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 
 
 def log_component_version(component_name):
