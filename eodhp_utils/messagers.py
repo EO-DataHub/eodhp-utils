@@ -365,7 +365,7 @@ class Messager[MSGTYPE](ABC):
             # Attach relevant metadata to the span
             span.set_attribute("message_id", msg.message_id())
             span.set_attribute("topic", msg.topic_name())
-            span.set_attribute("pulsar_subscription", self.subscription_name)
+            # span.set_attribute("pulsar_subscription", self.subscription_name)
 
             # Log message processing start
             span.add_event("Message processing started")
