@@ -10,6 +10,7 @@ import pulsar
 import pulsar.exceptions
 from opentelemetry import trace
 from opentelemetry.propagate import extract, inject
+from opentelemetry.trace import SpanKind
 from pulsar import Message
 
 import eodhp_utils
@@ -346,7 +347,9 @@ class Messager[MSGTYPE](ABC):
         # If the message has trace-related properties
         # (injected by a previous component like the harvester), those are captured.
         # If not, ctx will be empty (or default), and the new span becomes a root span.
-        carrier = msg.properties if hasattr(msg, "properties") else {}
+        # Extract properties from message (if any)
+        carrier = msg.properties() if callable(msg.properties) else msg.properties or {}
+        # Extract OpenTelemetry context
         ctx = extract(carrier)
 
         # Get a tracer and start a new span that is a child of the extracted context.
@@ -356,9 +359,16 @@ class Messager[MSGTYPE](ABC):
         # and context of this particular processing step.
 
         tracer = trace.get_tracer(__name__)
-        with tracer.start_as_current_span("messager.consume", context=ctx) as span:
-            # comment span below later
-            print(f"span : {span}")
+        with tracer.start_as_current_span(
+            "messager.consume", context=ctx, kind=SpanKind.CONSUMER
+        ) as span:
+            # Attach relevant metadata to the span
+            span.set_attribute("message_id", msg.message_id())
+            span.set_attribute("topic", msg.topic_name())
+            span.set_attribute("pulsar_subscription", self.subscription_name)
+
+            # Log message processing start
+            span.add_event("Message processing started")
             try:
                 actions = self.process_msg(msg)
 
@@ -382,12 +392,15 @@ class Messager[MSGTYPE](ABC):
                     inject(outgoing_properties)
                     self.producer.send(data)
 
+                    # Log that a message was sent
+                    span.add_event("Catalogue change message sent")
                     logger.debug("Catalogue change message sent to Pulsar")
             except TemporaryFailure:
                 logger.exception("Temporary failure processing message %s", msg)
                 failures.temporary = True
             except pulsar.exceptions.PulsarException as e:
                 if _is_pulsar_error_temporary(e):
+                    span.record_exception(e)
                     failures.temporary = True
                 else:
                     failures.permanent = True
