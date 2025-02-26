@@ -67,6 +67,7 @@ dependencies = [
     "botocore",
     "boto3",
     "pulsar-client",
+    "opentelemetry-distro"
 ]
 
 # List additional groups of dependencies here (e.g. development

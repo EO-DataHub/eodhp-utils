@@ -8,10 +8,14 @@ import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
+from opentelemetry import trace
+from opentelemetry.propagate import extract, inject
 from pulsar import Message
 
 import eodhp_utils
 import eodhp_utils.pulsar.messages
+
+logger = logging.getLogger(__name__)
 
 
 class TemporaryFailure(Exception):
@@ -335,32 +339,61 @@ class Messager[MSGTYPE](ABC):
         """
         failures = Messager.Failures()
 
-        try:
-            actions = self.process_msg(msg)
+        # Extract the trace context from the incoming message's properties.
+        # check with alex what needs to be done here? What key to refer here?
+        # is it the correlation id from the mesg itself
+        # since we don't have an http header or something like that
+        # If the message has trace-related properties
+        # (injected by a previous component like the harvester), those are captured.
+        # If not, ctx will be empty (or default), and the new span becomes a root span.
+        carrier = msg.properties if hasattr(msg, "properties") else {}
+        ctx = extract(carrier)
 
-            cat_changes = Messager.CatalogueChanges()
-            for action in actions:
-                self._runaction(action, cat_changes, failures)
+        # Get a tracer and start a new span that is a child of the extracted context.
+        # All logs or further instrumentation done inside
+        # the with block can be associated with this span,
+        # which helps you later see the timing, errors,
+        # and context of this particular processing step.
 
-            if cat_changes:
-                # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
-                # change message.
-                change_message = self.gen_catalogue_message(msg, cat_changes)
-                data = json.dumps(change_message).encode("utf-8")
-                self.producer.send(data)
+        tracer = trace.get_tracer(__name__)
+        with tracer.start_as_current_span("messager.consume", context=ctx) as span:
+            # comment span below later
+            print(f"span : {span}")
+            try:
+                actions = self.process_msg(msg)
 
-                logging.debug("Catalogue change message sent to Pulsar")
-        except TemporaryFailure:
-            logging.exception("Temporary failure processing message %s", msg)
-            failures.temporary = True
-        except pulsar.exceptions.PulsarException as e:
-            if _is_pulsar_error_temporary(e):
+                cat_changes = Messager.CatalogueChanges()
+                for action in actions:
+                    self._runaction(action, cat_changes, failures)
+
+                if cat_changes:
+                    # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
+                    # change message.
+                    change_message = self.gen_catalogue_message(msg, cat_changes)
+                    data = json.dumps(change_message).encode("utf-8")
+
+                    # Prepare an outgoing carrier and inject the current trace context.
+                    # Within the span, you process the message, run any actions, and
+                    # then—if there are catalogue changes—you send a new message.
+                    # Before sending, you inject the current trace context
+                    # (which now includes the span details)
+                    # into the outgoing message’s properties:
+                    outgoing_properties = {}
+                    inject(outgoing_properties)
+                    self.producer.send(data)
+
+                    logger.debug("Catalogue change message sent to Pulsar")
+            except TemporaryFailure:
+                logger.exception("Temporary failure processing message %s", msg)
                 failures.temporary = True
-            else:
+            except pulsar.exceptions.PulsarException as e:
+                if _is_pulsar_error_temporary(e):
+                    failures.temporary = True
+                else:
+                    failures.permanent = True
+            except Exception:
+                logger.exception("Permanent failure processing message %s", msg)
                 failures.permanent = True
-        except Exception:
-            logging.exception("Permanent failure processing message %s", msg)
-            failures.permanent = True
 
         return failures
 
