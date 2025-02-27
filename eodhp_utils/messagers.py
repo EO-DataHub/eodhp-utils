@@ -348,7 +348,7 @@ class Messager[MSGTYPE](ABC):
         # (injected by a previous component like the harvester), those are captured.
         # If not, ctx will be empty (or default), and the new span becomes a root span.
         # Extract properties from message (if any)
-        logging.info(f"pulsar mesg : {msg}")
+        print(f"pulsar mesg : {msg}")
         carrier = msg.properties() if callable(msg.properties) else msg.properties or {}
         # Extract OpenTelemetry context
         ctx = extract(carrier)
