@@ -371,9 +371,12 @@ class Messager[MSGTYPE](ABC):
             "messager.consume", context=ctx, kind=SpanKind.CONSUMER
         ) as span:
             # Attach relevant metadata to the span
-            span.set_attribute("message_id", msg.message_id())
+            span.set_attribute("message_id", str(msg.message_id()))
             span.set_attribute("topic", msg.topic_name())
-            # span.set_attribute("pulsar_subscription", self.subscription_name)
+            span.set_attribute("workspace", data_dict.get("workspace", "unknown"))
+            span.set_attribute("added_keys", str(data_dict.get("added_keys", [])))
+            span.set_attribute("updated_keys", str(data_dict.get("updated_keys", [])))
+            span.set_attribute("deleted_keys", str(data_dict.get("deleted_keys", [])))
 
             # Log message processing start
             span.add_event("Message processing started")
