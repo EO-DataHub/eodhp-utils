@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Sequence, Union
 
@@ -361,7 +362,7 @@ class Messager[MSGTYPE](ABC):
         failures = Messager.Failures()
 
         # Start Timing for Metrics
-        start_time = trace.time_ns()
+        start_time = time.time_ns()
 
         # Extract the trace context from the incoming message's properties.
         # check with alex what needs to be done here? What key to refer here?
@@ -452,7 +453,7 @@ class Messager[MSGTYPE](ABC):
                 failures.permanent = True
                 msg_failure_counter.add(1, {"status": "permanent_failure"})
 
-        elapsed_time = (trace.time_ns() - start_time) / 1e6  # Convert ns to ms
+        elapsed_time = (time.time_ns() - start_time) / 1e6  # Convert ns to ms
         msg_processing_time.record(elapsed_time, {"topic": msg.topic_name()})
 
         return failures
