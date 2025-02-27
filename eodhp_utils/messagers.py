@@ -348,7 +348,14 @@ class Messager[MSGTYPE](ABC):
         # (injected by a previous component like the harvester), those are captured.
         # If not, ctx will be empty (or default), and the new span becomes a root span.
         # Extract properties from message (if any)
-        print(f"pulsar mesg : {msg}")
+        data = msg.data().decode("utf-8")  # Convert bytes to string
+        print(f"Raw message data: {data}")
+        try:
+            data_dict = json.loads(data)
+            print(f"Parsed message: {json.dumps(data_dict, indent=2)}")  # Pretty print JSON
+        except json.JSONDecodeError:
+            print(f"Message is not in JSON format: {data}")
+
         carrier = msg.properties() if callable(msg.properties) else msg.properties or {}
         # Extract OpenTelemetry context
         ctx = extract(carrier)
@@ -396,8 +403,9 @@ class Messager[MSGTYPE](ABC):
                     # Log that a message was sent
                     span.add_event("Catalogue change message sent")
                     logger.debug("Catalogue change message sent to Pulsar")
-            except TemporaryFailure:
+            except TemporaryFailure as e:
                 logger.exception("Temporary failure processing message %s", msg)
+                span.record_exception(e)
                 failures.temporary = True
             except pulsar.exceptions.PulsarException as e:
                 if _is_pulsar_error_temporary(e):
@@ -405,8 +413,9 @@ class Messager[MSGTYPE](ABC):
                     failures.temporary = True
                 else:
                     failures.permanent = True
-            except Exception:
+            except Exception as e:
                 logger.exception("Permanent failure processing message %s", msg)
+                span.record_exception(e)
                 failures.permanent = True
 
         return failures
