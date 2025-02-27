@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Sequence, Union
 
@@ -8,10 +9,35 @@ import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
+from opentelemetry import metrics, trace
+from opentelemetry.propagate import extract, inject
+from opentelemetry.trace import SpanKind
 from pulsar import Message
 
 import eodhp_utils
 import eodhp_utils.pulsar.messages
+
+logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry Meter
+meter = metrics.get_meter(__name__)
+
+# Define Metrics
+msg_processed_counter = meter.create_counter(
+    "messager.messages_processed",
+    description="Total number of messages processed",
+)
+
+msg_failure_counter = meter.create_counter(
+    "messager.messages_failed",
+    description="Total number of messages that failed",
+)
+
+msg_processing_time = meter.create_histogram(
+    "messager.processing_time",
+    unit="ms",
+    description="Time taken to process each message",
+)
 
 
 class TemporaryFailure(Exception):
@@ -335,32 +361,100 @@ class Messager[MSGTYPE](ABC):
         """
         failures = Messager.Failures()
 
+        # Start Timing for Metrics
+        start_time = time.time_ns()
+
+        # Extract the trace context from the incoming message's properties.
+        # check with alex what needs to be done here? What key to refer here?
+        # is it the correlation id from the mesg itself
+        # since we don't have an http header or something like that
+        # If the message has trace-related properties
+        # (injected by a previous component like the harvester), those are captured.
+        # If not, ctx will be empty (or default), and the new span becomes a root span.
+        # Extract properties from message (if any)
+        data = msg.data().decode("utf-8")  # Convert bytes to string
+        print(f"Raw message data: {data}")
         try:
-            actions = self.process_msg(msg)
+            data_dict = json.loads(data)
+            print(f"Parsed message: {json.dumps(data_dict, indent=2)}")  # Pretty print JSON
+        except json.JSONDecodeError:
+            print(f"Message is not in JSON format: {data}")
 
-            cat_changes = Messager.CatalogueChanges()
-            for action in actions:
-                self._runaction(action, cat_changes, failures)
+        carrier = msg.properties() if callable(msg.properties) else msg.properties or {}
+        # Extract OpenTelemetry context
+        ctx = extract(carrier)
 
-            if cat_changes:
-                # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
-                # change message.
-                change_message = self.gen_catalogue_message(msg, cat_changes)
-                data = json.dumps(change_message).encode("utf-8")
-                self.producer.send(data)
+        # Get a tracer and start a new span that is a child of the extracted context.
+        # All logs or further instrumentation done inside
+        # the with block can be associated with this span,
+        # which helps you later see the timing, errors,
+        # and context of this particular processing step.
 
-                logging.debug("Catalogue change message sent to Pulsar")
-        except TemporaryFailure:
-            logging.exception("Temporary failure processing message %s", msg)
-            failures.temporary = True
-        except pulsar.exceptions.PulsarException as e:
-            if _is_pulsar_error_temporary(e):
+        tracer = trace.get_tracer(__name__)
+
+        with tracer.start_as_current_span(
+            "messager.consume", context=ctx, kind=SpanKind.CONSUMER
+        ) as span:
+            # Attach relevant metadata to the span
+            span.set_attribute("message_id", str(msg.message_id()))
+            span.set_attribute("topic", msg.topic_name())
+            span.set_attribute("workspace", data_dict.get("workspace", "unknown"))
+            span.set_attribute("added_keys", str(data_dict.get("added_keys", [])))
+            span.set_attribute("updated_keys", str(data_dict.get("updated_keys", [])))
+            span.set_attribute("deleted_keys", str(data_dict.get("deleted_keys", [])))
+
+            # Log message processing start
+            span.add_event("Message processing started")
+            try:
+                actions = self.process_msg(msg)
+
+                cat_changes = Messager.CatalogueChanges()
+                for action in actions:
+                    self._runaction(action, cat_changes, failures)
+
+                if cat_changes:
+                    # At least one OutputFileAction was encountered so we have to send a Pulsar catalogue
+                    # change message.
+                    change_message = self.gen_catalogue_message(msg, cat_changes)
+                    data = json.dumps(change_message).encode("utf-8")
+
+                    # Prepare an outgoing carrier and inject the current trace context.
+                    # Within the span, you process the message, run any actions, and
+                    # then—if there are catalogue changes—you send a new message.
+                    # Before sending, you inject the current trace context
+                    # (which now includes the span details)
+                    # into the outgoing message’s properties:
+                    outgoing_properties = carrier.copy()
+                    inject(outgoing_properties)
+                    self.producer.send(data)
+
+                    # Log that a message was sent
+                    span.add_event("Catalogue change message sent")
+                    logger.debug("Catalogue change message sent to Pulsar")
+
+                msg_processed_counter.add(1, {"status": "success"})
+
+            except TemporaryFailure as e:
+                logger.exception("Temporary failure processing message %s", msg)
+                span.record_exception(e)
                 failures.temporary = True
-            else:
+                msg_processed_counter.add(1, {"status": "success"})
+            except pulsar.exceptions.PulsarException as e:
+                if _is_pulsar_error_temporary(e):
+                    span.record_exception(e)
+                    failures.temporary = True
+                    msg_failure_counter.add(1, {"status": "temporary_failure"})
+                else:
+                    failures.permanent = True
+                    msg_failure_counter.add(1, {"status": "permanent_failure"})
+            except Exception as e:
+                logger.exception("Permanent failure processing message %s", msg)
+                span.record_exception(e)
                 failures.permanent = True
-        except Exception:
-            logging.exception("Permanent failure processing message %s", msg)
-            failures.permanent = True
+                msg_failure_counter.add(1, {"status": "permanent_failure"})
+
+        elapsed_time = (time.time_ns() - start_time) / 1e6  # Convert ns to ms
+        msg_processing_time.record(elapsed_time, {"topic": msg.topic_name()})
 
         return failures
 
