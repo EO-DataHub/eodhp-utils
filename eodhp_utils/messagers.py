@@ -8,7 +8,7 @@ import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
-from opentelemetry import trace
+from opentelemetry import metrics, trace
 from opentelemetry.propagate import extract, inject
 from opentelemetry.trace import SpanKind
 from pulsar import Message
@@ -17,6 +17,26 @@ import eodhp_utils
 import eodhp_utils.pulsar.messages
 
 logger = logging.getLogger(__name__)
+
+# Initialize OpenTelemetry Meter
+meter = metrics.get_meter(__name__)
+
+# Define Metrics
+msg_processed_counter = meter.create_counter(
+    "messager.messages_processed",
+    description="Total number of messages processed",
+)
+
+msg_failure_counter = meter.create_counter(
+    "messager.messages_failed",
+    description="Total number of messages that failed",
+)
+
+msg_processing_time = meter.create_histogram(
+    "messager.processing_time",
+    unit="ms",
+    description="Time taken to process each message",
+)
 
 
 class TemporaryFailure(Exception):
@@ -340,6 +360,9 @@ class Messager[MSGTYPE](ABC):
         """
         failures = Messager.Failures()
 
+        # Start Timing for Metrics
+        start_time = trace.time_ns()
+
         # Extract the trace context from the incoming message's properties.
         # check with alex what needs to be done here? What key to refer here?
         # is it the correlation id from the mesg itself
@@ -367,6 +390,7 @@ class Messager[MSGTYPE](ABC):
         # and context of this particular processing step.
 
         tracer = trace.get_tracer(__name__)
+
         with tracer.start_as_current_span(
             "messager.consume", context=ctx, kind=SpanKind.CONSUMER
         ) as span:
@@ -399,27 +423,37 @@ class Messager[MSGTYPE](ABC):
                     # Before sending, you inject the current trace context
                     # (which now includes the span details)
                     # into the outgoing message’s properties:
-                    outgoing_properties = {}
+                    outgoing_properties = carrier.copy()
                     inject(outgoing_properties)
                     self.producer.send(data)
 
                     # Log that a message was sent
                     span.add_event("Catalogue change message sent")
                     logger.debug("Catalogue change message sent to Pulsar")
+
+                msg_processed_counter.add(1, {"status": "success"})
+
             except TemporaryFailure as e:
                 logger.exception("Temporary failure processing message %s", msg)
                 span.record_exception(e)
                 failures.temporary = True
+                msg_processed_counter.add(1, {"status": "success"})
             except pulsar.exceptions.PulsarException as e:
                 if _is_pulsar_error_temporary(e):
                     span.record_exception(e)
                     failures.temporary = True
+                    msg_failure_counter.add(1, {"status": "temporary_failure"})
                 else:
                     failures.permanent = True
+                    msg_failure_counter.add(1, {"status": "permanent_failure"})
             except Exception as e:
                 logger.exception("Permanent failure processing message %s", msg)
                 span.record_exception(e)
                 failures.permanent = True
+                msg_failure_counter.add(1, {"status": "permanent_failure"})
+
+        elapsed_time = (trace.time_ns() - start_time) / 1e6  # Convert ns to ms
+        msg_processing_time.record(elapsed_time, {"topic": msg.topic_name()})
 
         return failures
 
