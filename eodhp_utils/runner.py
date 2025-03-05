@@ -125,7 +125,7 @@ class Runner:
 
     def _listener(self, consumer, msg):
         """
-        This is called asynchronous (there may be multiple threads) when a message is received.
+        This is called asynchronously (there may be multiple threads) when a message is received.
         The message may be for any of our messagers or may be a 'takeover' message.
         """
         topic_name = msg.topic_name().split("/")[-1]
