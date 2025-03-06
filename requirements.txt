@@ -4,19 +4,21 @@
 #
 #    pip-compile
 #
-attrs==24.2.0
+attrs==25.1.0
     # via
     #   jsonschema
     #   referencing
-boto3==1.35.52
+boto3==1.37.6
     # via eodhp-utils (pyproject.toml)
-botocore==1.35.52
+botocore==1.37.6
     # via
     #   boto3
     #   eodhp-utils (pyproject.toml)
     #   s3transfer
-certifi==2024.8.30
+certifi==2025.1.31
     # via pulsar-client
+faker==36.1.1
+    # via eodhp-utils (pyproject.toml)
 jmespath==1.0.1
     # via
     #   boto3
@@ -25,21 +27,25 @@ jsonschema==4.23.0
     # via eodhp-utils (pyproject.toml)
 jsonschema-specifications==2024.10.1
     # via jsonschema
-pulsar-client==3.5.0
+pulsar-client==3.6.1
     # via eodhp-utils (pyproject.toml)
 python-dateutil==2.9.0.post0
     # via botocore
-referencing==0.35.1
+referencing==0.36.2
     # via
     #   jsonschema
     #   jsonschema-specifications
-rpds-py==0.20.0
+rpds-py==0.23.1
     # via
     #   jsonschema
     #   referencing
-s3transfer==0.10.3
+s3transfer==0.11.4
     # via boto3
-six==1.16.0
+six==1.17.0
     # via python-dateutil
-urllib3==2.2.3
+typing-extensions==4.12.2
+    # via referencing
+tzdata==2025.1
+    # via faker
+urllib3==2.3.0
     # via botocore

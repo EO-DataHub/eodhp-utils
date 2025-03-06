@@ -16,8 +16,10 @@ from eodhp_utils.messagers import (
     CatalogueChangeMessager,
     CatalogueSTACChangeMessager,
     Messager,
+    PulsarJSONMessager,
     TemporaryFailure,
 )
+from eodhp_utils.pulsar.messages import BillingEvent
 
 SOURCE_PATH = "https://example.link.for.test/"
 TARGET = "/target_directory/"
@@ -486,3 +488,37 @@ def test_stac_change_messager_processes_only_stac(s3_client):
             cat_path="path/k4",
         ),
     ]
+
+
+@pytest.fixture
+def fake_billingevent():
+    return BillingEvent.get_fake()
+
+
+def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):
+
+    class TestJSONMessager(PulsarJSONMessager[BillingEvent]):
+        billingevents_received = []
+
+        def process_payload(self, be):
+            self.billingevents_received.append(be)
+            print(f"{be=}")
+            return []
+
+    schema = TestJSONMessager.get_schema()
+
+    # This tests a round trip with the Schema without testing the message reception.
+    enced = schema.encode(fake_billingevent)
+    decd = schema.decode(enced)
+    assert decd == fake_billingevent
+
+    # This is a bit more dodgy because it knows about Pulsar client library internals.
+    # 'msg' is a fake Pulsar message on which .value() will work.
+    testmsg = Mock()
+    testmsg.data = Mock(return_value=schema.encode(fake_billingevent))
+    msg = Message._wrap(testmsg)
+    msg._schema = schema
+
+    testmessager = TestJSONMessager(None, None)
+    testmessager.consume(msg)
+    assert testmessager.billingevents_received == [fake_billingevent]

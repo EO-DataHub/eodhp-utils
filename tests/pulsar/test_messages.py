@@ -4,8 +4,12 @@ import jsonschema
 import pytest
 
 from eodhp_utils.pulsar.messages import (
+    BillingEvent,
+    WorkspaceSettings,
+    generate_billingevent_schema,
     generate_harvest_schema,
     generate_schema,
+    generate_workspacesettings_schema,
     get_message_data,
 )
 
@@ -81,3 +85,25 @@ def test_get_message_data__schema_fail(mock_message):
         get_message_data(mock_message, schema)
 
     assert "is a required property" in e.value.args[0]
+
+
+def test_generate_billingevent_schema_encode_decode_restores_object():
+    schema = generate_billingevent_schema()
+
+    be = BillingEvent.get_fake()
+
+    enced = schema.encode(be)
+    decd = schema.decode(enced)
+
+    assert decd == be
+
+
+def test_generate_workspacesettings_schema_encode_decode_restores_object():
+    schema = generate_workspacesettings_schema()
+
+    ws = WorkspaceSettings.get_fake()
+
+    enced = schema.encode(ws)
+    decd = schema.decode(enced)
+
+    assert decd == ws

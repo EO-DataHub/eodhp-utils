@@ -67,6 +67,7 @@ dependencies = [
     "botocore",
     "boto3",
     "pulsar-client",
+    "faker",
 ]
 
 # List additional groups of dependencies here (e.g. development
@@ -90,7 +91,7 @@ dev = [
     "isort",
     "validate-pyproject[all]",
     "pre-commit",
-    "moto"
+    "moto",
 ]
 
 # List URLs that are relevant to your project
