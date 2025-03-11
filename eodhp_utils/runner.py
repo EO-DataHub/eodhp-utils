@@ -6,6 +6,8 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
 
 import boto3.session
+from opentelemetry import trace
+from opentelemetry.propagate import extract
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -14,6 +16,9 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+# Get tracer dynamically based on module name
+tracer = trace.get_tracer(__name__)
 
 
 def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
@@ -141,12 +146,18 @@ class Runner:
     def _process_messager_msg(self, topic_name, consumer, msg):
         messager = self.messagers[topic_name]
 
-        failures = messager.consume(msg)
+        # Extract OpenTelemetry trace context from Pulsar message
+        incoming_properties = msg.properties()
+        ctx = extract(incoming_properties)
 
-        if failures.any_temporary():
-            consumer.negative_acknowledge(msg)
-        else:
-            consumer.acknowledge(msg)
+        # Start a new span using extracted trace context
+        with tracer.start_as_current_span(f"process_{topic_name}", context=ctx):
+            failures = messager.consume(msg)
+
+            if failures.any_temporary():
+                consumer.negative_acknowledge(msg)
+            else:
+                consumer.acknowledge(msg)
 
     def _process_takeover(self, consumer, msg):
         """
