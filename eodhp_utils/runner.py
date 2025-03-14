@@ -6,6 +6,12 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
 
 import boto3.session
+from opentelemetry import trace
+from opentelemetry.baggage import get_all
+from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
+from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -14,6 +20,21 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+# Set up OpenTelemetry Tracer Provider
+tracer_provider = TracerProvider()
+
+# Automatically copy ALL baggage entries to span attributes
+tracer_provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+
+# Optional: Export spans to console for debugging
+tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+# Register globally
+trace.set_tracer_provider(tracer_provider)
+
+# Acquire tracer for this module
+tracer = trace.get_tracer(__name__)
 
 
 def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
@@ -141,12 +162,24 @@ class Runner:
     def _process_messager_msg(self, topic_name, consumer, msg):
         messager = self.messagers[topic_name]
 
-        failures = messager.consume(msg)
+        # Extract OpenTelemetry trace context from Pulsar message
+        incoming_properties = msg.properties()
+        ctx = extract(incoming_properties)
 
-        if failures.any_temporary():
-            consumer.negative_acknowledge(msg)
-        else:
-            consumer.acknowledge(msg)
+        # Start a new span using extracted trace context
+        with tracer.start_as_current_span(f"process_{topic_name}", context=ctx) as span:
+            for key, value in ctx.items():
+                span.set_attribute(key, value)
+
+            current_baggage = get_all()
+            logging.info(f"Baggage in process_msg: {current_baggage}")
+
+            failures = messager.consume(msg)
+
+            if failures.any_temporary():
+                consumer.negative_acknowledge(msg)
+            else:
+                consumer.acknowledge(msg)
 
     def _process_takeover(self, consumer, msg):
         """
