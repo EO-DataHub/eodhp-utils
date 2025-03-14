@@ -7,7 +7,10 @@ from typing import Optional
 
 import boto3.session
 from opentelemetry import trace
+from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -17,7 +20,19 @@ aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
 
-# Get tracer dynamically based on module name
+# Set up OpenTelemetry Tracer Provider
+tracer_provider = TracerProvider()
+
+# Automatically copy ALL baggage entries to span attributes
+tracer_provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+
+# Optional: Export spans to console for debugging
+tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+# Register globally
+trace.set_tracer_provider(tracer_provider)
+
+# Acquire tracer for this module
 tracer = trace.get_tracer(__name__)
 
 
@@ -151,7 +166,10 @@ class Runner:
         ctx = extract(incoming_properties)
 
         # Start a new span using extracted trace context
-        with tracer.start_as_current_span(f"process_{topic_name}", context=ctx):
+        with tracer.start_as_current_span(f"process_{topic_name}", context=ctx) as span:
+            for key, value in ctx.items():
+                span.set_attribute(key, value)
+
             failures = messager.consume(msg)
 
             if failures.any_temporary():

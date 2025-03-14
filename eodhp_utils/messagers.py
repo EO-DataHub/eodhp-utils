@@ -341,7 +341,10 @@ class Messager[MSGTYPE](ABC):
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
-    def consume(self, msg: MSGTYPE, properties=None) -> Failures:
+    def consume(
+        self,
+        msg: MSGTYPE,
+    ) -> Failures:
         """
         This consumes an input, asks the Messager (via an implementation in a task-specific
         subclass) to process it, then runs the set of actions requested by that processing.
@@ -365,8 +368,7 @@ class Messager[MSGTYPE](ABC):
                 data = json.dumps(change_message).encode("utf-8")
 
                 # Inject OpenTelemetry trace context into message properties
-                if properties is None:
-                    properties = {}
+                properties = {}
                 inject(properties)
 
                 # ✅ Send Pulsar message with trace context
