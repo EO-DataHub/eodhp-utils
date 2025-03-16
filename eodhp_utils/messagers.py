@@ -354,7 +354,7 @@ class Messager[MSGTYPE](ABC):
         sensible. This means it doesn't throw exceptions.
         """
         current_baggage = get_all()
-        logging.error(f"Consume method: current baggage: {current_baggage}")
+        logging.error(f"Consume method from messagers class: current baggage: {current_baggage}")
         failures = Messager.Failures()
 
         try:
@@ -374,7 +374,7 @@ class Messager[MSGTYPE](ABC):
                 properties = {}
                 inject(properties)
 
-                # ✅ Send Pulsar message with trace context
+                # Send Pulsar message with trace context
                 self.producer.send(data, properties=properties)
 
                 logging.error("Catalogue change message sent to Pulsar")
