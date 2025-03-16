@@ -8,7 +8,10 @@ from typing import Optional
 import boto3.session
 from opentelemetry import trace
 from opentelemetry.baggage import get_all
+from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -17,6 +20,16 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+# Only set a new provider if one isn't already set.
+current_provider = trace.get_tracer_provider()
+if not isinstance(current_provider, TracerProvider):
+    provider = TracerProvider()
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+    provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(provider)
+else:
+    provider = current_provider
 
 # Acquire tracer for this module
 tracer = trace.get_tracer(__name__)
