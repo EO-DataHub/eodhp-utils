@@ -9,6 +9,8 @@ import boto3.session
 from opentelemetry import trace
 from opentelemetry.baggage import get_all
 from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -17,6 +19,11 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+# Set up the tracer provider with a ConsoleSpanExporter
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+trace.set_tracer_provider(provider)
 
 # Acquire tracer for this module
 tracer = trace.get_tracer(__name__)
