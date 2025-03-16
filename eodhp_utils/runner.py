@@ -8,10 +8,7 @@ from typing import Optional
 import boto3.session
 from opentelemetry import trace
 from opentelemetry.baggage import get_all
-from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -20,18 +17,6 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
-
-# Set up OpenTelemetry Tracer Provider
-tracer_provider = TracerProvider()
-
-# Automatically copy ALL baggage entries to span attributes
-tracer_provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
-
-# Optional: Export spans to console for debugging
-tracer_provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
-
-# Register globally
-trace.set_tracer_provider(tracer_provider)
 
 # Acquire tracer for this module
 tracer = trace.get_tracer(__name__)
@@ -172,7 +157,7 @@ class Runner:
                 span.set_attribute(key, value)
 
             current_baggage = get_all()
-            logging.info(f"Baggage in process_msg: {current_baggage}")
+            logging.info(f"Baggage in process_msg from runner py utils: {current_baggage}")
 
             failures = messager.consume(msg)
 
