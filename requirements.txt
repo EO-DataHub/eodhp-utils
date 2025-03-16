@@ -35,22 +35,13 @@ jsonschema-specifications==2024.10.1
     # via jsonschema
 opentelemetry-api==1.30.0
     # via
-    #   opentelemetry-distro
-    #   opentelemetry-instrumentation
+    #   eodhp-utils (pyproject.toml)
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-distro==0.51b0
-    # via eodhp-utils (pyproject.toml)
-opentelemetry-instrumentation==0.51b0
-    # via opentelemetry-distro
 opentelemetry-sdk==1.30.0
-    # via opentelemetry-distro
+    # via eodhp-utils (pyproject.toml)
 opentelemetry-semantic-conventions==0.51b0
-    # via
-    #   opentelemetry-instrumentation
-    #   opentelemetry-sdk
-packaging==24.2
-    # via opentelemetry-instrumentation
+    # via opentelemetry-sdk
 pulsar-client==3.6.1
     # via eodhp-utils (pyproject.toml)
 python-dateutil==2.9.0.post0
@@ -76,8 +67,6 @@ tzdata==2025.1
 urllib3==2.3.0
     # via botocore
 wrapt==1.17.2
-    # via
-    #   deprecated
-    #   opentelemetry-instrumentation
+    # via deprecated
 zipp==3.21.0
     # via importlib-metadata

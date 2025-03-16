@@ -68,6 +68,8 @@ dependencies = [
     "boto3",
     "pulsar-client",
     "faker",
+    "opentelemetry-api",
+    "opentelemetry-sdk",
 ]
 
 # List additional groups of dependencies here (e.g. development
