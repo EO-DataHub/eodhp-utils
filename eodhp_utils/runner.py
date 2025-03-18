@@ -11,7 +11,7 @@ from opentelemetry.baggage import get_all
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 
 from eodhp_utils.messagers import CatalogueChangeMessager
@@ -24,7 +24,7 @@ SUSPEND_TIME = 5
 # Create and set a new tracer provider
 provider = TracerProvider()
 provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
-provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
 trace.set_tracer_provider(provider)
 
 # Acquire tracer for this module
