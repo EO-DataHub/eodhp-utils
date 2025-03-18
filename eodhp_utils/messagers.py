@@ -10,7 +10,6 @@ import botocore.exceptions
 import pulsar
 import pulsar.exceptions
 from opentelemetry.baggage import get_all
-from opentelemetry.propagate import inject
 from pulsar import Message
 from pulsar.schema import BytesSchema, JsonSchema, Record, Schema
 
@@ -371,11 +370,11 @@ class Messager[MSGTYPE](ABC):
                 data = json.dumps(change_message).encode("utf-8")
 
                 # Inject OpenTelemetry trace context into message properties
-                properties = {}
-                inject(properties)
+                # properties = {}
+                # inject(properties)
 
                 # Send Pulsar message with trace context
-                self.producer.send(data, properties=properties)
+                self.producer.send(data)
 
                 logging.error("Catalogue change message sent to Pulsar")
         except TemporaryFailure:
