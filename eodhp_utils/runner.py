@@ -21,11 +21,17 @@ aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
 
-# Create and set a new tracer provider
-provider = TracerProvider()
-provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
-provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
-trace.set_tracer_provider(provider)
+# --- Tracer Provider Setup ---
+current_provider = trace.get_tracer_provider()
+if not isinstance(current_provider, TracerProvider):
+    provider = TracerProvider()
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+    provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(provider)
+else:
+    provider = current_provider
+    # add baggage processor
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
 
 # Acquire tracer for this module
 tracer = trace.get_tracer(__name__)
