@@ -9,7 +9,6 @@ import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
-from opentelemetry.baggage import get_all
 from opentelemetry.propagate import inject
 from pulsar import Message
 from pulsar.schema import BytesSchema, JsonSchema, Record, Schema
@@ -353,8 +352,6 @@ class Messager[MSGTYPE](ABC):
         This returns an object specified any failures that occurred and whether retrying is
         sensible. This means it doesn't throw exceptions.
         """
-        current_baggage = get_all()
-        logging.error(f"Consume method from messagers class: current baggage: {current_baggage}")
         failures = Messager.Failures()
 
         try:

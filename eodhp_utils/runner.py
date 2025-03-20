@@ -7,7 +7,6 @@ from typing import Optional
 
 import boto3.session
 from opentelemetry import trace
-from opentelemetry.baggage import get_all
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
@@ -170,9 +169,6 @@ class Runner:
         with tracer.start_as_current_span(f"process_{topic_name}", context=ctx) as span:
             for key, value in ctx.items():
                 span.set_attribute(key, value)
-
-            current_baggage = get_all()
-            logging.info(f"Baggage in process_msg from runner py utils: {current_baggage}")
 
             failures = messager.consume(msg)
 
