@@ -87,9 +87,15 @@ nodeenv==1.9.1
 opentelemetry-api==1.30.0
     # via
     #   eodhp-utils (pyproject.toml)
+    #   opentelemetry-instrumentation
+    #   opentelemetry-instrumentation-logging
     #   opentelemetry-processor-baggage
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
+opentelemetry-instrumentation==0.51b0
+    # via opentelemetry-instrumentation-logging
+opentelemetry-instrumentation-logging==0.51b0
+    # via eodhp-utils (pyproject.toml)
 opentelemetry-processor-baggage==0.52b0
     # via eodhp-utils (pyproject.toml)
 opentelemetry-sdk==1.30.0
@@ -97,11 +103,14 @@ opentelemetry-sdk==1.30.0
     #   eodhp-utils (pyproject.toml)
     #   opentelemetry-processor-baggage
 opentelemetry-semantic-conventions==0.51b0
-    # via opentelemetry-sdk
+    # via
+    #   opentelemetry-instrumentation
+    #   opentelemetry-sdk
 packaging==24.2
     # via
     #   black
     #   build
+    #   opentelemetry-instrumentation
     #   pytest
     #   validate-pyproject
 pathspec==0.12.1
@@ -189,6 +198,7 @@ wheel==0.45.1
 wrapt==1.17.2
     # via
     #   deprecated
+    #   opentelemetry-instrumentation
     #   opentelemetry-processor-baggage
 xmltodict==0.14.2
     # via moto

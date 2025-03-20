@@ -7,6 +7,7 @@ from typing import Optional
 
 import boto3.session
 from opentelemetry import trace
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
@@ -60,10 +61,15 @@ def get_boto3_session():
     return aws_client
 
 
-LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+OTEL_LOG_FORMAT = (
+    "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
+    "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
+    "trace_sampled=%(otelTraceSampled)s] - %(message)s"
+)
 
 
-def setup_logging(verbosity=0):
+def setup_logging(verbosity=0, enable_otel_logging=False):
     """
     This should be called based on command line arguments. eg:
 
@@ -71,30 +77,37 @@ def setup_logging(verbosity=0):
     def my_cli(verbose):
         setup_logging(verbosity=verbose)
     """
+    # If OpenTelemetry logging is enabled, instrument logging before configuration.
+    if enable_otel_logging:
+        LoggingInstrumentor().instrument(set_logging_format=True)
+        log_format = OTEL_LOG_FORMAT
+    else:
+        log_format = DEFAULT_LOG_FORMAT
+
     if verbosity == 0:
         logging.getLogger("botocore").setLevel(logging.CRITICAL)
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
         logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-        logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT)
+        logging.basicConfig(level=logging.WARNING, format=log_format)
     elif verbosity == 1:
         logging.getLogger("botocore").setLevel(logging.ERROR)
         logging.getLogger("boto3").setLevel(logging.ERROR)
         logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
     elif verbosity == 2:
         logging.getLogger("botocore").setLevel(logging.WARNING)
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
     elif verbosity > 2:
         logging.getLogger("botocore").setLevel(logging.DEBUG)
         logging.getLogger("boto3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.basicConfig(level=logging.DEBUG, format=log_format)
 
 
 def log_component_version(component_name):

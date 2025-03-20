@@ -70,7 +70,8 @@ dependencies = [
     "faker",
     "opentelemetry-api",
     "opentelemetry-sdk",
-    "opentelemetry-processor-baggage"
+    "opentelemetry-processor-baggage",
+    "opentelemetry-instrumentation-logging"
 ]
 
 # List additional groups of dependencies here (e.g. development
