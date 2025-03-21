@@ -69,7 +69,7 @@ OTEL_LOG_FORMAT = (
 )
 
 
-def setup_logging(verbosity=0, enable_otel_logging=False):
+def setup_logging(verbosity=0, enable_otel_logging=True):
     """
     This should be called based on command line arguments. eg:
 
