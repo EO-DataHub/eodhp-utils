@@ -95,6 +95,7 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
         logging.setLogRecordFactory(custom_record_factory)
 
         # Instrument logging with the custom log hook.
+        # Use set_logging_format=False so that our basicConfig() call isn't overridden.
         LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
         log_format = OTEL_LOG_FORMAT
     else:
