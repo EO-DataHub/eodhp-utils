@@ -7,6 +7,7 @@ from typing import Optional
 
 import boto3.session
 from opentelemetry import trace
+from opentelemetry.baggage import get_all
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
@@ -65,25 +66,41 @@ DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 OTEL_LOG_FORMAT = (
     "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
     "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
-    "trace_sampled=%(otelTraceSampled)s] - %(message)s"
+    "trace_sampled=%(otelTraceSampled)s baggage=%(baggage)s] - %(message)s"
 )
 
+# Define a custom log record factory to ensure every log record has a 'baggage' attribute.
+_old_log_record_factory = logging.getLogRecordFactory()
 
-def setup_logging(verbosity=0, enable_otel_logging=True):
-    """
-    This should be called based on command line arguments. eg:
 
-    @click.option('-v', '--verbose', count=True)
-    def my_cli(verbose):
-        setup_logging(verbosity=verbose)
+def custom_record_factory(*args, **kwargs):
+    record = _old_log_record_factory(*args, **kwargs)
+    if "baggage" not in record.__dict__:
+        record.baggage = ""  # Default empty baggage
+    return record
+
+
+# Define a custom log hook that adds baggage from the current context.
+def add_baggage_to_log(span, record):
+    record.baggage = str(get_all())
+
+
+def setup_logging(verbosity=0, enable_otel_logging=False):
     """
-    # If OpenTelemetry logging is enabled, instrument logging before configuration.
+    Configures logging based on verbosity and whether OpenTelemetry logging is enabled.
+    When OTEL logging is enabled, baggage is automatically injected into each log record.
+    """
     if enable_otel_logging:
-        LoggingInstrumentor().instrument(set_logging_format=True)
+        # Set our custom log record factory.
+        logging.setLogRecordFactory(custom_record_factory)
+
+        # Instrument logging with the custom log hook.
+        LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
         log_format = OTEL_LOG_FORMAT
     else:
         log_format = DEFAULT_LOG_FORMAT
 
+    # Configure logging levels and format based on verbosity.
     if verbosity == 0:
         logging.getLogger("botocore").setLevel(logging.CRITICAL)
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
