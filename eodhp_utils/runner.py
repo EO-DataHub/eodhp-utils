@@ -85,7 +85,7 @@ def add_baggage_to_log(span, record):
     record.baggage = str(get_all())
 
 
-def setup_logging(verbosity=0, enable_otel_logging=False):
+def setup_logging(verbosity=0, enable_otel_logging=True):
     """
     Configures logging based on verbosity and whether OpenTelemetry logging is enabled.
     When OTEL logging is enabled, baggage is automatically injected into each log record.
