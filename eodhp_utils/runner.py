@@ -66,7 +66,7 @@ DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 OTEL_LOG_FORMAT = (
     "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
     "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
-    "trace_sampled=%(otelTraceSampled)s baggage=%(baggage)s] - %(message)s"
+    "trace_sampled=%(otelTraceSampled)s %(baggage)s] - %(message)s"
 )
 
 # Define a custom log record factory to ensure every log record has a 'baggage' attribute.
@@ -82,7 +82,7 @@ def custom_record_factory(*args, **kwargs):
 
 # Define a custom log hook that adds baggage from the current context.
 def add_baggage_to_log(span, record):
-    record.baggage = str(get_all())
+    record.baggage = " ".join(f"{k}={v}" for k, v in get_all().items())
 
 
 def setup_logging(verbosity=0, enable_otel_logging=True):
