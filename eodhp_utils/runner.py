@@ -69,15 +69,6 @@ OTEL_LOG_FORMAT = (
     "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
     "trace_sampled=%(otelTraceSampled)s workspace=%(workspace)s source_url=%(source_url)s] - %(message)s"
 )
-# Define a custom log record factory to ensure every log record has a 'baggage' attribute.
-_old_log_record_factory = logging.getLogRecordFactory()
-
-
-def custom_record_factory(*args, **kwargs):
-    record = _old_log_record_factory(*args, **kwargs)
-    if "baggage" not in record.__dict__:
-        record.baggage = ""  # Default empty baggage
-    return record
 
 
 # Define a custom log hook that adds baggage from the current context.
@@ -93,8 +84,6 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
     When OTEL logging is enabled, baggage is automatically injected into each log record.
     """
     if enable_otel_logging:
-        # Set our custom record factory to ensure every log record has a baggage attribute.
-        logging.setLogRecordFactory(custom_record_factory)
         # Use set_logging_format=False to prevent the instrumentor from overriding our configuration.
         LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
         log_format = OTEL_LOG_FORMAT
