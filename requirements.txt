@@ -61,6 +61,8 @@ pulsar-client==3.6.1
     # via eodhp-utils (pyproject.toml)
 python-dateutil==2.9.0.post0
     # via botocore
+python-json-logger==3.3.0
+    # via eodhp-utils (pyproject.toml)
 referencing==0.36.2
     # via
     #   jsonschema

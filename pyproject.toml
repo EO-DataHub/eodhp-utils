@@ -71,7 +71,8 @@ dependencies = [
     "opentelemetry-api",
     "opentelemetry-sdk",
     "opentelemetry-processor-baggage",
-    "opentelemetry-instrumentation-logging"
+    "opentelemetry-instrumentation-logging",
+    "python-json-logger"
 ]
 
 # List additional groups of dependencies here (e.g. development

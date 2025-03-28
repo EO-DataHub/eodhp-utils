@@ -148,6 +148,8 @@ python-dateutil==2.9.0.post0
     # via
     #   botocore
     #   moto
+python-json-logger==3.3.0
+    # via eodhp-utils (pyproject.toml)
 pyyaml==6.0.2
     # via
     #   pre-commit

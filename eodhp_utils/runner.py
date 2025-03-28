@@ -14,6 +14,7 @@ from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
+from pythonjsonlogger import jsonlogger
 
 from eodhp_utils.messagers import CatalogueChangeMessager
 
@@ -68,7 +69,12 @@ OTEL_LOG_FORMAT = (
     "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
     "trace_sampled=%(otelTraceSampled)s %(baggage)s] - %(message)s"
 )
-
+OTEL_JSON_FORMAT = (
+    "%(asctime)s %(levelname)s %(name)s %(filename)s %(lineno)d "
+    "%(otelTraceID)s %(otelSpanID)s %(otelServiceName)s %(otelTraceSampled)s "
+    "%(workspace)s %(source_url)s %(message)s"
+)
+json_formatter = jsonlogger.JsonFormatter(OTEL_JSON_FORMAT)
 # Define a custom log record factory to ensure every log record has a 'baggage' attribute.
 _old_log_record_factory = logging.getLogRecordFactory()
 
@@ -91,13 +97,20 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
     When OTEL logging is enabled, baggage is automatically injected into each log record.
     """
     if enable_otel_logging:
-        # Set our custom log record factory.
+        # Set our custom record factory to ensure every log record has a baggage attribute.
         logging.setLogRecordFactory(custom_record_factory)
-
-        # Instrument logging with the custom log hook.
-        # Use set_logging_format=False so that our basicConfig() call isn't overridden.
+        # Instrument logging with our custom log hook.
+        # Use set_logging_format=False to prevent the instrumentor from overriding our configuration.
         LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
-        log_format = OTEL_LOG_FORMAT
+        log_format = OTEL_JSON_FORMAT
+
+        handler = logging.StreamHandler()
+        formatter = jsonlogger.JsonFormatter(log_format)
+        handler.setFormatter(formatter)
+        root_logger = logging.getLogger()
+        root_logger.handlers = []  # Clear any existing handlers.
+        root_logger.addHandler(handler)
+        root_logger.setLevel(logging.DEBUG)
     else:
         log_format = DEFAULT_LOG_FORMAT
 
