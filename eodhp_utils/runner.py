@@ -67,14 +67,8 @@ DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 OTEL_LOG_FORMAT = (
     "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
     "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
-    "trace_sampled=%(otelTraceSampled)s %(baggage)s] - %(message)s"
+    "trace_sampled=%(otelTraceSampled)s baggage=%(baggage)s] - %(message)s"
 )
-OTEL_JSON_FORMAT = (
-    "%(asctime)s %(levelname)s %(name)s %(filename)s %(lineno)d "
-    "%(otelTraceID)s %(otelSpanID)s %(otelServiceName)s %(otelTraceSampled)s "
-    "%(workspace)s %(source_url)s %(message)s"
-)
-json_formatter = jsonlogger.JsonFormatter(OTEL_JSON_FORMAT)
 # Define a custom log record factory to ensure every log record has a 'baggage' attribute.
 _old_log_record_factory = logging.getLogRecordFactory()
 
@@ -99,10 +93,9 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
     if enable_otel_logging:
         # Set our custom record factory to ensure every log record has a baggage attribute.
         logging.setLogRecordFactory(custom_record_factory)
-        # Instrument logging with our custom log hook.
         # Use set_logging_format=False to prevent the instrumentor from overriding our configuration.
         LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
-        log_format = OTEL_JSON_FORMAT
+        log_format = OTEL_LOG_FORMAT
 
         handler = logging.StreamHandler()
         formatter = jsonlogger.JsonFormatter(log_format)
