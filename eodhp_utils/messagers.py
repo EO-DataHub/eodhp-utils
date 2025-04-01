@@ -438,7 +438,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
 
         all_actions = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
-            for key in input_change_msg.get(change_type):
+            for key in input_change_msg.get(change_type, []):
                 # The key in the source bucket has format
                 # "<harvest-pipeline-component>/<catalogue-path>"
                 #
