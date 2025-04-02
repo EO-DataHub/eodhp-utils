@@ -4,6 +4,11 @@ from argparse import Action
 from typing import Sequence
 from unittest import mock
 
+from opentelemetry import trace
+from opentelemetry.baggage import get_baggage, set_baggage
+from opentelemetry.context import attach
+from opentelemetry.propagate import inject
+
 import eodhp_utils
 import eodhp_utils.runner
 from eodhp_utils import runner
@@ -144,3 +149,33 @@ def test_takeover_results_in_pause():
         runner.run(max_loops=1)
 
         mock_consumer.resume_message_listener.assert_called_once()
+
+
+def test_baggage_propagated_across_call():
+    ######### Setup - get a simulated set of properties which would be attached to a Pulsar msg.
+    tracer = trace.get_tracer(__name__)
+    with tracer.start_as_current_span("harvester_span"):
+        attach(set_baggage("test", "testval"))
+        props = {}
+        inject(props)
+
+    mock_message = mock.MagicMock(name="takeover-message")
+    mock_message.properties.return_value = props
+    mock_message.topic_name.return_value = "x/test-topic"
+
+    class MessagerBaggageTester(Messager[str]):
+        def process_msg(self, msg: str) -> Sequence[Action]:
+            self.baggage_value = get_baggage("test")
+            return []
+
+        def gen_empty_catalogue_message(self, msg: str) -> dict:
+            return {}
+
+    msgr = MessagerBaggageTester()
+
+    ######### Test
+    runner = eodhp_utils.runner.Runner({"test-topic": msgr}, "test-subscription")
+    runner._listener(mock.MagicMock(), mock_message)
+
+    ###### Check result
+    assert msgr.baggage_value == "testval"
