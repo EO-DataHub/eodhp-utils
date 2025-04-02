@@ -8,6 +8,7 @@ from typing import Optional
 import boto3.session
 from opentelemetry import trace
 from opentelemetry.baggage import get_all
+from opentelemetry.context import attach, detach
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
@@ -198,28 +199,23 @@ class Runner:
     def _process_messager_msg(self, topic_name, consumer, msg):
         messager = self.messagers[topic_name]
 
-        # Extract OpenTelemetry trace context from Pulsar message
+        # Extract and activate OpenTelemetry trace context from Pulsar message
         incoming_properties = msg.properties()
-        logging.debug(f"Catalogue change message received from Pulsar : {incoming_properties}")
-        ctx = extract(incoming_properties)
-        logging.debug(f"ctx from message : {ctx}")
-        baggage = get_all()
-        for key, value in baggage.items():
-            logging.debug(f"baggage in transformer : {key}:{value}")
-        # Start a new span using extracted trace context
-        with tracer.start_as_current_span(f"process_{topic_name}", context=ctx) as span:
-            logging.debug(f"span before ctx added in transformer : {span}")
-            logging.debug(f"ctx items in transformer : {ctx.items()}")
-            for key, value in ctx.items():
-                span.set_attribute(key, value)
+        propagated_ctx = extract(incoming_properties)
+        old_context = attach(propagated_ctx)
 
-            logging.debug(f"span after ctx added in transformer : {span}")
-            failures = messager.consume(msg)
+        try:
+            # Start a new span for this processing step, using a context which is a child of the
+            # restored context.
+            with tracer.start_as_current_span(self.subscription_name):
+                failures = messager.consume(msg)
 
-            if failures.any_temporary():
-                consumer.negative_acknowledge(msg)
-            else:
-                consumer.acknowledge(msg)
+                if failures.any_temporary():
+                    consumer.negative_acknowledge(msg)
+                else:
+                    consumer.acknowledge(msg)
+        finally:
+            detach(old_context)
 
     def _process_takeover(self, consumer, msg):
         """
