@@ -199,11 +199,12 @@ class Runner:
             logging.debug(f"baggage in transformer : {key}:{value}")
         # Start a new span using extracted trace context
         with tracer.start_as_current_span(f"process_{topic_name}", context=ctx) as span:
-            logging.debug(f"span in transformer : {span}")
+            logging.debug(f"span before ctx added in transformer : {span}")
             logging.debug(f"ctx items in transformer : {ctx.items()}")
             for key, value in ctx.items():
                 span.set_attribute(key, value)
 
+            logging.debug(f"span after ctx added in transformer : {span}")
             failures = messager.consume(msg)
 
             if failures.any_temporary():
