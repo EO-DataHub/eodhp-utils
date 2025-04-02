@@ -64,18 +64,23 @@ def get_boto3_session():
 
 
 DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
-OTEL_LOG_FORMAT = (
-    "%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] "
-    "[trace_id=%(otelTraceID)s span_id=%(otelSpanID)s resource.service.name=%(otelServiceName)s "
-    "trace_sampled=%(otelTraceSampled)s workspace=%(workspace)s source_url=%(source_url)s] - %(message)s"
-)
 
 
-# Define a custom log hook that adds baggage from the current context.
-def add_baggage_to_log(span, record):
-    baggage = get_all()
-    for key, value in baggage.items():
-        setattr(record, key, value)
+class AddBaggageToLogFilter(logging.Filter):
+    """
+    This adds all values from OTel's baggage to the log message.
+    This way, information like trace_id and workspace propagated from one part of a pipeline
+    to another via Pulsar messages is added to every log message.
+
+    Use `attach(set_baggage("key", "value"))` to add values.
+    """
+
+    def filter(self, record):
+        baggage = get_all()
+        for key, value in baggage.items():
+            setattr(record, key, value)
+
+        return True
 
 
 def setup_logging(verbosity=0, enable_otel_logging=True):
@@ -84,19 +89,23 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
     When OTEL logging is enabled, baggage is automatically injected into each log record.
     """
     if enable_otel_logging:
-        # Use set_logging_format=False to prevent the instrumentor from overriding our configuration.
-        LoggingInstrumentor().instrument(set_logging_format=False, log_hook=add_baggage_to_log)
-        log_format = OTEL_LOG_FORMAT
+        # This sets up OTel to add span information to logs.
+        LoggingInstrumentor().instrument(set_logging_format=False)
 
+        # We now need to set up the root logger to
+        #  - Log to stderr (handler)
+        #  - Use JSON-format structure logs that Elastic can interpret (formatter)
+        #  - Add OTel Baggage to the logs so that context is logged and searchable (filter)
         handler = logging.StreamHandler()
-        formatter = jsonlogger.JsonFormatter(log_format)
+
+        formatter = jsonlogger.JsonFormatter()
         handler.setFormatter(formatter)
+
         root_logger = logging.getLogger()
-        root_logger.handlers = []  # Clear any existing handlers.
         root_logger.addHandler(handler)
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.addFilter(AddBaggageToLogFilter())
     else:
-        log_format = DEFAULT_LOG_FORMAT
+        logging.basicConfig(format=DEFAULT_LOG_FORMAT)
 
     # Configure logging levels and format based on verbosity.
     if verbosity == 0:
@@ -104,25 +113,25 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
         logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-        logging.basicConfig(level=logging.WARNING, format=log_format)
+        logging.getLogger().setLevel(logging.WARNING)
     elif verbosity == 1:
         logging.getLogger("botocore").setLevel(logging.ERROR)
         logging.getLogger("boto3").setLevel(logging.ERROR)
         logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
+        logging.getLogger().setLevel(logging.DEBUG)
     elif verbosity == 2:
         logging.getLogger("botocore").setLevel(logging.WARNING)
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
+        logging.getLogger().setLevel(logging.DEBUG)
     elif verbosity > 2:
         logging.getLogger("botocore").setLevel(logging.DEBUG)
         logging.getLogger("boto3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
-        logging.basicConfig(level=logging.DEBUG, format=log_format)
+        logging.getLogger().setLevel(logging.DEBUG)
 
 
 def log_component_version(component_name):
