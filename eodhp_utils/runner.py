@@ -191,6 +191,7 @@ class Runner:
 
         # Extract OpenTelemetry trace context from Pulsar message
         incoming_properties = msg.properties()
+        logging.debug(f"Catalogue change message received from Pulsar : {incoming_properties}")
         ctx = extract(incoming_properties)
 
         # Start a new span using extracted trace context
