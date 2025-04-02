@@ -374,7 +374,7 @@ class Messager[MSGTYPE](ABC):
                 # Send Pulsar message with trace context
                 self.producer.send(data, properties=properties)
 
-                logging.debug("Catalogue change message sent to Pulsar")
+                logging.debug(f"Catalogue change message sent to Pulsar : {properties}")
         except TemporaryFailure:
             logging.exception("Temporary failure processing message %s", msg)
             failures.temporary = True
