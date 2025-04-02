@@ -90,23 +90,19 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
     """
     if enable_otel_logging:
         # This sets up OTel to add span information to logs.
-        LoggingInstrumentor().instrument()
+        LoggingInstrumentor().instrument(set_logging_format=False)
 
         # We now need to set up the root logger to
         #  - Log to stderr (handler)
         #  - Use JSON-format structure logs that Elastic can interpret (formatter)
         #  - Add OTel Baggage to the logs so that context is logged and searchable (filter)
-        root_logger = logging.getLogger()
-
         handler = logging.StreamHandler()
 
         formatter = jsonlogger.JsonFormatter()
         handler.setFormatter(formatter)
 
-        for handler in root_logger.handlers:
-            root_logger.removeHandler(handler)
+        root_logger = logging.getLogger()
         root_logger.addHandler(handler)
-
         root_logger.addFilter(AddBaggageToLogFilter())
     else:
         logging.basicConfig(format=DEFAULT_LOG_FORMAT)
