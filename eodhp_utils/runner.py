@@ -86,6 +86,12 @@ class AddBaggageToLogFilter(logging.Filter):
 
 def setup_logging(verbosity=0, enable_otel_logging=True):
     """
+    This should be called based on command line arguments. eg:
+
+    @click.option('-v', '--verbose', count=True)
+    def my_cli(verbose):
+        setup_logging(verbosity=verbose)
+
     Configures logging based on verbosity and whether OpenTelemetry logging is enabled.
     When OTEL logging is enabled, baggage is automatically injected into each log record.
     """
