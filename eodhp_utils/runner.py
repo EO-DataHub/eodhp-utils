@@ -6,7 +6,16 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Optional
 
 import boto3.session
+from opentelemetry import trace
+from opentelemetry.baggage import get_all
+from opentelemetry.context import attach, detach
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
+from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
+from opentelemetry.propagate import extract
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
+from pythonjsonlogger import jsonlogger
 
 from eodhp_utils.messagers import CatalogueChangeMessager
 
@@ -14,6 +23,21 @@ pulsar_client = None
 aws_client = None
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+# --- Tracer Provider Setup ---
+current_provider = trace.get_tracer_provider()
+if not isinstance(current_provider, TracerProvider):
+    provider = TracerProvider()
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+    provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    trace.set_tracer_provider(provider)
+else:
+    provider = current_provider
+    # add baggage processor
+    provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
+
+# Acquire tracer for this module
+tracer = trace.get_tracer(__name__)
 
 
 def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
@@ -40,41 +64,81 @@ def get_boto3_session():
     return aws_client
 
 
-LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
+DEFAULT_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 
-def setup_logging(verbosity=0):
+class AddBaggageToLogFilter(logging.Filter):
+    """
+    This adds all values from OTel's baggage to the log message.
+    This way, information like trace_id and workspace propagated from one part of a pipeline
+    to another via Pulsar messages is added to every log message.
+
+    Use `attach(set_baggage("key", "value"))` to add values.
+    """
+
+    def filter(self, record):
+        baggage = get_all()
+        for key, value in baggage.items():
+            setattr(record, key, value)
+
+        return True
+
+
+def setup_logging(verbosity=0, enable_otel_logging=True):
     """
     This should be called based on command line arguments. eg:
 
     @click.option('-v', '--verbose', count=True)
     def my_cli(verbose):
         setup_logging(verbosity=verbose)
+
+    Configures logging based on verbosity and whether OpenTelemetry logging is enabled.
+    When OTEL logging is enabled, baggage is automatically injected into each log record.
     """
+    if enable_otel_logging:
+        # This sets up OTel to add span information to logs.
+        LoggingInstrumentor().instrument(set_logging_format=False)
+
+        # We now need to set up the root logger to
+        #  - Log to stderr (handler)
+        #  - Use JSON-format structure logs that Elastic can interpret (formatter)
+        #  - Add OTel Baggage to the logs so that context is logged and searchable (filter)
+        handler = logging.StreamHandler()
+
+        formatter = jsonlogger.JsonFormatter()
+        handler.setFormatter(formatter)
+
+        root_logger = logging.getLogger()
+        root_logger.addHandler(handler)
+        root_logger.addFilter(AddBaggageToLogFilter())
+    else:
+        logging.basicConfig(format=DEFAULT_LOG_FORMAT)
+
+    # Configure logging levels and format based on verbosity.
     if verbosity == 0:
         logging.getLogger("botocore").setLevel(logging.CRITICAL)
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
         logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-        logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT)
+        logging.getLogger().setLevel(logging.WARNING)
     elif verbosity == 1:
         logging.getLogger("botocore").setLevel(logging.ERROR)
         logging.getLogger("boto3").setLevel(logging.ERROR)
         logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.getLogger().setLevel(logging.DEBUG)
     elif verbosity == 2:
         logging.getLogger("botocore").setLevel(logging.WARNING)
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.getLogger().setLevel(logging.DEBUG)
     elif verbosity > 2:
         logging.getLogger("botocore").setLevel(logging.DEBUG)
         logging.getLogger("boto3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
 
-        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+        logging.getLogger().setLevel(logging.DEBUG)
 
 
 def log_component_version(component_name):
@@ -141,12 +205,23 @@ class Runner:
     def _process_messager_msg(self, topic_name, consumer, msg):
         messager = self.messagers[topic_name]
 
-        failures = messager.consume(msg)
+        # Extract and activate OpenTelemetry trace context from Pulsar message
+        incoming_properties = msg.properties()
+        propagated_ctx = extract(incoming_properties)
+        old_context = attach(propagated_ctx)
 
-        if failures.any_temporary():
-            consumer.negative_acknowledge(msg)
-        else:
-            consumer.acknowledge(msg)
+        try:
+            # Start a new span for this processing step, using a context which is a child of the
+            # restored context.
+            with tracer.start_as_current_span(self.subscription_name):
+                failures = messager.consume(msg)
+
+                if failures.any_temporary():
+                    consumer.negative_acknowledge(msg)
+                else:
+                    consumer.acknowledge(msg)
+        finally:
+            detach(old_context)
 
     def _process_takeover(self, consumer, msg):
         """

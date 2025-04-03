@@ -9,6 +9,7 @@ import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
+from opentelemetry.propagate import inject
 from pulsar import Message
 from pulsar.schema import BytesSchema, JsonSchema, Record, Schema
 
@@ -29,7 +30,7 @@ class TemporaryFailure(Exception):
 
 
 def _is_boto_error_temporary(
-    exc: Union[botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError]
+    exc: Union[botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError],
 ) -> bool:
     temp_excepts = (
         botocore.exceptions.ConnectionError,
@@ -340,7 +341,10 @@ class Messager[MSGTYPE](ABC):
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
-    def consume(self, msg: MSGTYPE) -> Failures:
+    def consume(
+        self,
+        msg: MSGTYPE,
+    ) -> Failures:
         """
         This consumes an input, asks the Messager (via an implementation in a task-specific
         subclass) to process it, then runs the set of actions requested by that processing.
@@ -362,9 +366,15 @@ class Messager[MSGTYPE](ABC):
                 # change message.
                 change_message = self.gen_catalogue_message(msg, cat_changes)
                 data = json.dumps(change_message).encode("utf-8")
-                self.producer.send(data)
 
-                logging.debug("Catalogue change message sent to Pulsar")
+                # Inject OpenTelemetry trace context into message properties
+                properties = {}
+                inject(properties)
+
+                # Send Pulsar message with trace context
+                self.producer.send(data, properties=properties)
+
+                logging.debug(f"Catalogue change message sent to Pulsar : {properties}")
         except TemporaryFailure:
             logging.exception("Temporary failure processing message %s", msg)
             failures.temporary = True
