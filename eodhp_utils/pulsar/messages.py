@@ -46,6 +46,44 @@ def generate_billingevent_schema() -> Schema:
     return JsonSchema(BillingEvent)
 
 
+class BillingResourceConsumptionRateSample(Record):
+    uuid = String()
+    sample_time = String()  # ISO datetime in UTC
+    sku = String()
+    user = String()  # UUID for the user
+    workspace = String()  # workspace name
+    rate = Double()
+
+    @staticmethod
+    def get_fake():
+        fake = Faker()
+
+        crs = BillingResourceConsumptionRateSample()
+        crs.uuid = fake.uuid4()
+        crs.sample_time = fake.past_datetime("-1h").isoformat()
+        crs.sku = fake.pystr(4, 10)
+        crs.user = fake.uuid4()
+        crs.workspace = fake.user_name()
+        crs.rate = fake.pyfloat()
+
+        return crs
+
+    def __repr__(self):
+        return (
+            "BillingResourceConsumptionRateSample("
+            + f"{self.uuid=}, "
+            + f"{self.sample_time=}, "
+            + f"{self.sku=}, "
+            + f"{self.user=}, "
+            + f"{self.workspace=}, "
+            + f"{self.rate=}))"
+        )
+
+
+def generate_billingresourceconsumptionratesample_schema() -> Schema:
+    return JsonSchema(BillingResourceConsumptionRateSample)
+
+
 class WorkspaceObjectStoreSettings(Record):
     store_id = String()  # UUID
     name = String()
