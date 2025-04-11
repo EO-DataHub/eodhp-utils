@@ -163,8 +163,8 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
 
     @dataclasses.dataclass(kw_only=True)
     class S3Action(Action, ABC):
-        bucket: str = None  # Defaults to messager.output_bucket
-        file_body: str
+        bucket: Optional[str] = None  # Defaults to messager.output_bucket
+        file_body: Optional[str]  # None means delete the file
         mime_type: str = "application/json"
         cache_control: str = "max-age=0"
 
@@ -204,7 +204,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         catalogue change message entry.
         """
 
-        key: str = None
+        key: Optional[str] = None
         permanent: bool = True
 
     @dataclasses.dataclass(kw_only=True)
@@ -274,8 +274,8 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         """
         ...
 
-    def gen_catalogue_message(self, msg: MSGTYPE, cat_changes: CatalogueChanges) -> dict:
-        msg = self.gen_empty_catalogue_message(msg)
+    def gen_catalogue_message(self, inmsg: MSGTYPE, cat_changes: CatalogueChanges) -> dict:
+        msg = self.gen_empty_catalogue_message(inmsg)
         msg["added_keys"] = cat_changes.added
         msg["updated_keys"] = cat_changes.updated
         msg["deleted_keys"] = cat_changes.deleted
@@ -289,7 +289,15 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         Subclasses may override this to handle exceptions not handled here. This handles only
         boto and Pulsar exceptions.
         """
-        return _is_boto_error_temporary(e) or _is_pulsar_error_temporary(e)
+        if isinstance(e, botocore.exceptions.BotoCoreError) or isinstance(
+            e, botocore.exceptions.ClientError
+        ):
+            return _is_boto_error_temporary(e)
+
+        if isinstance(e, pulsar.exceptions.PulsarException):
+            return _is_pulsar_error_temporary(e)
+
+        return False
 
     def _runaction(self, action: Action, cat_changes: CatalogueChanges, failures: Failures):
         """
@@ -355,7 +363,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
                 failures.temporary = True
         elif isinstance(action, Messager.PulsarMessageAction):
             # Inject OpenTelemetry trace context into message properties
-            properties = {}
+            properties: dict[str, str] = {}
             inject(properties)
 
             # Send Pulsar message with trace context
@@ -463,7 +471,7 @@ class CatalogueChangeMessager(Messager[Message, bytes], ABC):
         source = input_change_msg.get("source")
         target = input_change_msg.get("target")
 
-        all_actions = []
+        all_actions: list[Messager.Action] = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
             for key in input_change_msg.get(change_type, []):
                 # The key in the source bucket has format
@@ -586,9 +594,7 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
     ) -> Iterable[CatalogueChangeMessager.Action]: ...
 
 
-class PulsarJSONMessager[PAYLOADOBJ: Record, OUTPAYLOADOBJ: Record](
-    Messager[Message, OUTPAYLOADOBJ], ABC
-):
+class PulsarJSONMessager[PAYLOADOBJ: Record, OUTPAYLOADOBJ](Messager[Message, OUTPAYLOADOBJ], ABC):
     """
     This is an abstract Messager subclass for consuming Pulsar messages whose payload follows
     a Pulsar JSON schema defined by a Python object (PAYLOADOBJ) inheriting from

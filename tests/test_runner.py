@@ -1,6 +1,5 @@
 import os
 import time
-from argparse import Action
 from typing import Sequence
 from unittest import mock
 
@@ -16,9 +15,9 @@ from eodhp_utils.messagers import Messager
 
 
 class MessagerTester(Messager[str, bytes]):
-    messages_received = []
+    messages_received: list[str] = []
 
-    def process_msg(self, msg: str) -> Sequence[Action]:
+    def process_msg(self, msg: str) -> Sequence[Messager.Action]:
         self.messages_received.append(msg)
 
         if msg == "EXIT":
@@ -164,7 +163,7 @@ def test_baggage_propagated_across_call():
     mock_message.topic_name.return_value = "x/test-topic"
 
     class MessagerBaggageTester(Messager[str, bytes]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             self.baggage_value = get_baggage("test")
             return []
 

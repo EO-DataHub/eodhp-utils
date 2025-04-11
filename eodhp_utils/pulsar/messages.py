@@ -149,7 +149,7 @@ def generate_harvest_schema():
     return generate_schema(properties=properties, required=required)
 
 
-def generate_schema(properties: dict = None, required: list = None) -> dict:
+def generate_schema(properties: dict = None, required: typing.Optional[list] = None) -> dict:
     """Generates a JSON schema with 'type", 'required' and 'properties' fields"""
 
     if properties is None:
