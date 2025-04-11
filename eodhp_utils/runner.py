@@ -120,20 +120,26 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
         logging.getLogger("boto3").setLevel(logging.CRITICAL)
         logging.getLogger("urllib3").setLevel(logging.CRITICAL)
 
-        logging.getLogger().setLevel(logging.WARNING)
+        logging.getLogger().setLevel(logging.ERROR)
     elif verbosity == 1:
         logging.getLogger("botocore").setLevel(logging.ERROR)
         logging.getLogger("boto3").setLevel(logging.ERROR)
         logging.getLogger("urllib3").setLevel(logging.ERROR)
 
-        logging.getLogger().setLevel(logging.DEBUG)
+        logging.getLogger().setLevel(logging.WARNING)
     elif verbosity == 2:
         logging.getLogger("botocore").setLevel(logging.WARNING)
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+        logging.getLogger().setLevel(logging.INFO)
+    elif verbosity == 3:
+        logging.getLogger("botocore").setLevel(logging.WARNING)
+        logging.getLogger("boto3").setLevel(logging.WARNING)
+        logging.getLogger("urllib3").setLevel(logging.WARNING)
+
         logging.getLogger().setLevel(logging.DEBUG)
-    elif verbosity > 2:
+    elif verbosity > 3:
         logging.getLogger("botocore").setLevel(logging.DEBUG)
         logging.getLogger("boto3").setLevel(logging.DEBUG)
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
