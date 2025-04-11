@@ -15,7 +15,7 @@ from eodhp_utils import runner
 from eodhp_utils.messagers import Messager
 
 
-class MessagerTester(Messager[str]):
+class MessagerTester(Messager[str, bytes]):
     messages_received = []
 
     def process_msg(self, msg: str) -> Sequence[Action]:
@@ -163,7 +163,7 @@ def test_baggage_propagated_across_call():
     mock_message.properties.return_value = props
     mock_message.topic_name.return_value = "x/test-topic"
 
-    class MessagerBaggageTester(Messager[str]):
+    class MessagerBaggageTester(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             self.baggage_value = get_baggage("test")
             return []

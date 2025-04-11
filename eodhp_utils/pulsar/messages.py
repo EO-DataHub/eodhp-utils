@@ -1,5 +1,6 @@
 import json
 import logging
+import typing
 import uuid
 
 import jsonschema
@@ -173,3 +174,20 @@ def get_message_data(msg, schema=None):
             logging.error(f"Validation failed: {e}")
             raise
     return data_dict
+
+
+def get_schema_for_type_annotation(cls, base_cls, annotation_index) -> Schema:
+    """
+    This finds the Pulsar Schema associated with a class given as a type annotation.
+
+    eg, if you have class MyClass[MESSAGETYPE]: ... with subclass MySubclass(MyClass[Msg]) then
+    get_schema_for_type_annotation(MySubclass().__class__, MyClass, 0) will return the Schema
+    for Msg.
+    """
+    bases = typing.types.get_original_bases(cls)
+    for base in bases:
+        if typing.get_origin(base) == base_cls:
+            payloadobj_class = typing.get_args(base)[annotation_index]
+            return JsonSchema(payloadobj_class)
+
+    raise ValueError(f"{cls=} doesn't inherit from {base_cls=}")

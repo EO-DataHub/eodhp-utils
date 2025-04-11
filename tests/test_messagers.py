@@ -61,7 +61,7 @@ def pulsar_message_from_dict(val: dict) -> Message:
 def test_messages_delivered_to_messager_subclass():
     messages_received = []
 
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             messages_received.append(msg)
             return []
@@ -78,7 +78,7 @@ def test_messages_delivered_to_messager_subclass():
 
 
 def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             if msg == "temp":
                 raise TemporaryFailure("process_msg")
@@ -98,7 +98,7 @@ def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
 
 
 def test_s3_upload_action_processed(s3_client):
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
                 Messager.S3UploadAction(file_body=b"test_body1", bucket="testbucket2", key="k1"),
@@ -126,7 +126,7 @@ def test_s3_upload_action_processed(s3_client):
 
 
 def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_client):
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
                 Messager.S3UploadAction(file_body=b"test_body1", bucket="nonexistent", key="k1"),
@@ -140,7 +140,7 @@ def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_clie
 
 
 def test_s3_timeout_error_produces_temporary_error_result():
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
                 Messager.S3UploadAction(file_body=b"test_body1", bucket="nonexistent", key="k1"),
@@ -157,7 +157,7 @@ def test_s3_timeout_error_produces_temporary_error_result():
 
 
 def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_client):
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (
                 Messager.OutputFileAction(
@@ -217,7 +217,7 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_clie
 
 
 def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_client):
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
 
@@ -231,7 +231,7 @@ def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_cl
 
 
 def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
-    class TestMessager(Messager[str]):
+    class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Action]:
             return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
 
@@ -497,7 +497,7 @@ def fake_billingevent():
 
 def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):
 
-    class TestJSONMessager(PulsarJSONMessager[BillingEvent]):
+    class TestJSONMessager(PulsarJSONMessager[BillingEvent, bytes]):
         billingevents_received = []
 
         def process_payload(self, be):

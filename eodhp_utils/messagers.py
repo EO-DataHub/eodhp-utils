@@ -1,9 +1,8 @@
 import dataclasses
 import json
 import logging
-import typing
 from abc import ABC, abstractmethod
-from typing import Optional, Sequence, Union
+from typing import Iterable, Optional, Union
 
 import botocore
 import botocore.exceptions
@@ -11,7 +10,7 @@ import pulsar
 import pulsar.exceptions
 from opentelemetry.propagate import inject
 from pulsar import Message
-from pulsar.schema import BytesSchema, JsonSchema, Record, Schema
+from pulsar.schema import BytesSchema, Record, Schema
 
 import eodhp_utils
 import eodhp_utils.pulsar.messages
@@ -77,7 +76,7 @@ def _is_pulsar_error_temporary(exc: pulsar.exceptions.PulsarException) -> bool:
     return any(map(lambda excclass: isinstance(exc, excclass), temp_excepts))
 
 
-class Messager[MSGTYPE](ABC):
+class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
     """
     This is an abstract base class for creating 'messagers'. Messagers are classes which consume
     and/or produce catalogue Pulsar messages and entries in S3. Harvesters, transformers and
@@ -92,6 +91,10 @@ class Messager[MSGTYPE](ABC):
       * FailureAction:
           Mark the whole processing or a single catalogue key as having failed permanent (no retry
           allowed) or temporarily (retry allowed).
+      * PulsarMessageAction:
+          Send a Pulsar message to a specified topic. The payload must be of type OUTPUMSGTYPE
+          and the topic (and producer) must have a schema which matches this. Use `bytes` if
+          there is no defined schema as this is the default.
 
     You should inherit from the correct subclass:
       * Producing Pulsar messages only (harvester):
@@ -183,6 +186,18 @@ class Messager[MSGTYPE](ABC):
         cat_path: str
 
     @dataclasses.dataclass(kw_only=True)
+    class PulsarMessageAction(Action):
+        """
+        A PulsarMessageAction emits a Pulsar message using the Producer provided to the
+        constructor. The Producer must have been initialized with the right schema (matching
+        OUTPUTMSGTYPE, which may be `bytes`).
+
+        OpenTelemetry context will be attached to the message via its properties.
+        """
+
+        payload: OUTPUTMSGTYPE
+
+    @dataclasses.dataclass(kw_only=True)
     class FailureAction(Action):
         """
         This indicates a failure occured and which may have occurred processing only a particular
@@ -250,7 +265,7 @@ class Messager[MSGTYPE](ABC):
         key: str
 
     @abstractmethod
-    def process_msg(self, msg: MSGTYPE) -> Sequence[Action]: ...
+    def process_msg(self, msg: MSGTYPE) -> Iterable[Action]: ...
 
     @abstractmethod
     def gen_empty_catalogue_message(self, msg: MSGTYPE) -> dict:
@@ -338,6 +353,15 @@ class Messager[MSGTYPE](ABC):
                 failures.permanent = True
             else:
                 failures.temporary = True
+        elif isinstance(action, Messager.PulsarMessageAction):
+            # Inject OpenTelemetry trace context into message properties
+            properties = {}
+            inject(properties)
+
+            # Send Pulsar message with trace context
+            self.producer.send(action.payload, properties=properties)
+
+            logging.debug(f"Message sent to Pulsar: {action.payload=} {properties=}")
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
@@ -367,14 +391,7 @@ class Messager[MSGTYPE](ABC):
                 change_message = self.gen_catalogue_message(msg, cat_changes)
                 data = json.dumps(change_message).encode("utf-8")
 
-                # Inject OpenTelemetry trace context into message properties
-                properties = {}
-                inject(properties)
-
-                # Send Pulsar message with trace context
-                self.producer.send(data, properties=properties)
-
-                logging.debug(f"Catalogue change message sent to Pulsar : {properties}")
+                self._runaction(Messager.PulsarMessageAction(payload=data), None, failures)
         except TemporaryFailure:
             logging.exception("Temporary failure processing message %s", msg)
             failures.temporary = True
@@ -401,7 +418,7 @@ class Messager[MSGTYPE](ABC):
         return BytesSchema()
 
 
-class CatalogueChangeMessager(Messager[Message], ABC):
+class CatalogueChangeMessager(Messager[Message, bytes], ABC):
     """
     This is an abstract Messager subclass for consuming catalogue entry change messages from
     Pulsar. This is suitable for use with transformers and ingesters.
@@ -414,12 +431,12 @@ class CatalogueChangeMessager(Messager[Message], ABC):
     @abstractmethod
     def process_update(
         self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
-    ) -> Sequence[Messager.Action]: ...
+    ) -> Iterable[Messager.Action]: ...
 
     @abstractmethod
     def process_delete(
         self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
-    ) -> Sequence[Messager.Action]: ...
+    ) -> Iterable[Messager.Action]: ...
 
     def gen_empty_catalogue_message(self, msg: Message) -> dict:
         return {
@@ -430,7 +447,7 @@ class CatalogueChangeMessager(Messager[Message], ABC):
             "target": self.input_change_msg.get("target"),
         }
 
-    def process_msg(self, msg: Message) -> Sequence[Messager.Action]:
+    def process_msg(self, msg: Message) -> Iterable[Messager.Action]:
         """
         This processes an input catalogue change message, loops over each changed entry in it,
         asks the implementation (in a task-specific subclass) to process each one separately.
@@ -512,7 +529,7 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
         source: str,
         target: str,
         retries: int = 0,
-    ) -> Sequence[Messager.Action]:
+    ) -> Iterable[Messager.Action]:
         try:
             get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
         except botocore.exceptions.ClientError as e:
@@ -540,7 +557,7 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
     @abstractmethod
     def process_update_body(
         self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
-    ) -> Sequence[CatalogueChangeMessager.Action]: ...
+    ) -> Iterable[CatalogueChangeMessager.Action]: ...
 
 
 class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
@@ -553,7 +570,7 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
 
     def process_update_body(
         self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
-    ) -> Sequence[CatalogueChangeMessager.Action]:
+    ) -> Iterable[CatalogueChangeMessager.Action]:
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
             return []
 
@@ -566,10 +583,12 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
         cat_path: str,
         source: str,
         target: str,
-    ) -> Sequence[CatalogueChangeMessager.Action]: ...
+    ) -> Iterable[CatalogueChangeMessager.Action]: ...
 
 
-class PulsarJSONMessager[PAYLOADOBJ: Record](Messager[Message], ABC):
+class PulsarJSONMessager[PAYLOADOBJ: Record, OUTPAYLOADOBJ: Record](
+    Messager[Message, OUTPAYLOADOBJ], ABC
+):
     """
     This is an abstract Messager subclass for consuming Pulsar messages whose payload follows
     a Pulsar JSON schema defined by a Python object (PAYLOADOBJ) inheriting from
@@ -584,16 +603,12 @@ class PulsarJSONMessager[PAYLOADOBJ: Record](Messager[Message], ABC):
         This returns a Pulsar Schema for the PAYLOADOBJ type. This is what Pulsar uses to convert
         the encoded message into a Python object.
         """
-        bases = typing.types.get_original_bases(cls)
-        for base in bases:
-            if typing.get_origin(base) == PulsarJSONMessager:
-                payloadobj_class = typing.get_args(base)[0]
-                return JsonSchema(payloadobj_class)
-
-        raise ValueError("cls doesn't inherit from PulsarJSONMessager")
+        return eodhp_utils.pulsar.messages.get_schema_for_type_annotation(
+            cls, PulsarJSONMessager, 0
+        )
 
     @abstractmethod
-    def process_payload(self, obj: PAYLOADOBJ) -> Sequence[Messager.Action]: ...
+    def process_payload(self, obj: PAYLOADOBJ) -> Iterable[Messager.Action]: ...
 
     def gen_empty_catalogue_message(self, msg):
         # This is overridden due to a design flaw in Messagers: Messager assumes that all
@@ -601,7 +616,7 @@ class PulsarJSONMessager[PAYLOADOBJ: Record](Messager[Message], ABC):
         # for other purposes.
         raise NotImplementedError()
 
-    def process_msg(self, msg: Message) -> Sequence[Messager.Action]:
+    def process_msg(self, msg: Message) -> Iterable[Messager.Action]:
         """
         This passes the decoded payload from the Pulsar message to the subclass's
         process_payload method.
