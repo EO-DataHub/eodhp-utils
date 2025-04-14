@@ -448,7 +448,9 @@ class CatalogueChangeMessager(Messager[Message], ABC):
 
         all_actions = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
-            for key in input_change_msg.get(change_type, []):
+            keys = input_change_msg.get(change_type, [])
+            keys.sort(key=lambda s: s.count("/"))
+            for key in keys:
                 # The key in the source bucket has format
                 # "<harvest-pipeline-component>/<catalogue-path>"
                 #
@@ -511,20 +513,8 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
         cat_path: str,
         source: str,
         target: str,
-        retries: int = 0,
     ) -> Sequence[Messager.Action]:
-        try:
-            get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
-        except botocore.exceptions.ClientError as e:
-            # On some occasions we have seen Pulsar messages arrive before the file is in S3.
-            if e.response["Error"]["Code"] == "NoSuchKey" and retries < 3:
-                logging.warning("Key was not present, trying again")
-                retries += 1
-                return self.process_update(
-                    input_bucket, input_key, cat_path, source, target, retries
-                )
-            else:
-                raise
+        get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
         entry_body = get_result["Body"].read()
 
         # Transformer needs updating to ensure that content type is set to this

@@ -148,7 +148,7 @@ def log_component_version(component_name):
         logging.info(f"{component_name} starting, version {__version__}")
     except PackageNotFoundError:
         # Not installed as a package, eg running directly from Git clone.
-        logging.info("{component_name} starting from dev environment")
+        logging.info(f"{component_name} starting from dev environment")
 
 
 class Runner:
