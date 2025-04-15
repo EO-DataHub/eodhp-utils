@@ -55,16 +55,16 @@ class BillingResourceConsumptionRateSample(Record):
     rate = Double()
 
     @staticmethod
-    def get_fake():
+    def get_fake(sample_time=None, rate=None, workspace=None, sku=None):
         fake = Faker()
 
         crs = BillingResourceConsumptionRateSample()
         crs.uuid = fake.uuid4()
-        crs.sample_time = fake.past_datetime("-1h").isoformat()
-        crs.sku = fake.pystr(4, 10)
+        crs.sample_time = sample_time or fake.past_datetime("-1h").isoformat()
+        crs.sku = sku or fake.pystr(4, 10)
         crs.user = fake.uuid4()
-        crs.workspace = fake.user_name()
-        crs.rate = fake.pyfloat()
+        crs.workspace = workspace or fake.user_name()
+        crs.rate = rate or fake.pyfloat()
 
         return crs
 
