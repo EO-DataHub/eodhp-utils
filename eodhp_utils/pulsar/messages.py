@@ -1,9 +1,9 @@
 import json
-import logging
+import typing
 import uuid
+from datetime import timezone
 
 import jsonschema
-import jsonschema.exceptions
 from faker import Faker
 from pulsar.schema import Array, Double, JsonSchema, Record, Schema, String
 
@@ -30,7 +30,7 @@ class BillingEvent(Record):
         be = BillingEvent()
         be.uuid = fake.uuid4()
 
-        start = fake.past_datetime("-30d")
+        start = fake.past_datetime("-30d", tzinfo=timezone.utc)
         be.event_start = start.isoformat()
         be.event_end = (start + fake.time_delta("+10m")).isoformat()
         be.sku = fake.pystr(4, 10)
@@ -43,6 +43,44 @@ class BillingEvent(Record):
 
 def generate_billingevent_schema() -> Schema:
     return JsonSchema(BillingEvent)
+
+
+class BillingResourceConsumptionRateSample(Record):
+    uuid = String()
+    sample_time = String()  # ISO datetime in UTC
+    sku = String()
+    user = String()  # UUID for the user
+    workspace = String()  # workspace name
+    rate = Double()
+
+    @staticmethod
+    def get_fake(sample_time: str = None, rate=None, workspace=None, sku=None):
+        fake = Faker()
+
+        crs = BillingResourceConsumptionRateSample()
+        crs.uuid = fake.uuid4()
+        crs.sample_time = sample_time or fake.past_datetime("-1h", tzinfo=timezone.utc).isoformat()
+        crs.sku = sku or fake.pystr(4, 10)
+        crs.user = fake.uuid4()
+        crs.workspace = workspace or fake.user_name()
+        crs.rate = rate or fake.pyfloat()
+
+        return crs
+
+    def __repr__(self):
+        return (
+            "BillingResourceConsumptionRateSample("
+            + f"{self.uuid=}, "
+            + f"{self.sample_time=}, "
+            + f"{self.sku=}, "
+            + f"{self.user=}, "
+            + f"{self.workspace=}, "
+            + f"{self.rate=})"
+        )
+
+
+def generate_billingresourceconsumptionratesample_schema() -> Schema:
+    return JsonSchema(BillingResourceConsumptionRateSample)
 
 
 class WorkspaceObjectStoreSettings(Record):
@@ -124,7 +162,7 @@ class WorkspaceSettings(Record):
         obj.member_group = obj.name + "-group"
         obj.status = "created"
         obj.stores = [WorkspaceStoresSettings.get_fake()]
-        obj.last_update = fake.past_datetime("-30d").isoformat()
+        obj.last_update = fake.past_datetime("-30d", tzinfo=timezone.utc).isoformat()
 
         return obj
 
@@ -148,7 +186,7 @@ def generate_harvest_schema():
     return generate_schema(properties=properties, required=required)
 
 
-def generate_schema(properties: dict = None, required: list = None) -> dict:
+def generate_schema(properties: dict = None, required: typing.Optional[list] = None) -> dict:
     """Generates a JSON schema with 'type", 'required' and 'properties' fields"""
 
     if properties is None:
@@ -167,9 +205,22 @@ def get_message_data(msg, schema=None):
     data = msg.data().decode("utf-8")
     data_dict = json.loads(data)
     if schema:
-        try:
-            jsonschema.validate(data_dict, schema)
-        except jsonschema.exceptions.ValidationError as e:
-            logging.error(f"Validation failed: {e}")
-            raise
+        jsonschema.validate(data_dict, schema)
     return data_dict
+
+
+def get_schema_for_type_annotation(cls, base_cls, annotation_index) -> Schema:
+    """
+    This finds the Pulsar Schema associated with a class given as a type annotation.
+
+    eg, if you have class MyClass[MESSAGETYPE]: ... with subclass MySubclass(MyClass[Msg]) then
+    get_schema_for_type_annotation(MySubclass().__class__, MyClass, 0) will return the Schema
+    for Msg.
+    """
+    bases = typing.types.get_original_bases(cls)
+    for base in bases:
+        if typing.get_origin(base) == base_cls:
+            payloadobj_class = typing.get_args(base)[annotation_index]
+            return JsonSchema(payloadobj_class)
+
+    raise ValueError(f"{cls=} doesn't inherit from {base_cls=}")

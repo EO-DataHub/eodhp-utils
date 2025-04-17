@@ -84,7 +84,7 @@ class AddBaggageToLogFilter(logging.Filter):
         return True
 
 
-def setup_logging(verbosity=0, enable_otel_logging=True):
+def setup_logging(verbosity=0, enable_otel_logging=None):
     """
     This should be called based on command line arguments. eg:
 
@@ -94,7 +94,16 @@ def setup_logging(verbosity=0, enable_otel_logging=True):
 
     Configures logging based on verbosity and whether OpenTelemetry logging is enabled.
     When OTEL logging is enabled, baggage is automatically injected into each log record.
+
+    By default, otel structured logging is enabled if we're running in Kubernetes or
+    the OTEL_SERVICE_NAME environment variable is set.
     """
+    enable_otel_logging = (
+        enable_otel_logging
+        or "KUBERNETES_SERVICE_HOST" in os.environ
+        or "OTEL_SERVICE_NAME" in os.environ
+    )
+
     if enable_otel_logging:
         # This sets up OTel to add span information to logs.
         LoggingInstrumentor().instrument(set_logging_format=False)

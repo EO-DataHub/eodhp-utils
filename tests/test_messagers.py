@@ -1,6 +1,5 @@
 import json
 import sys
-from argparse import Action
 from typing import Sequence
 from unittest.mock import Mock
 
@@ -61,8 +60,8 @@ def pulsar_message_from_dict(val: dict) -> Message:
 def test_messages_delivered_to_messager_subclass():
     messages_received = []
 
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             messages_received.append(msg)
             return []
 
@@ -78,8 +77,8 @@ def test_messages_delivered_to_messager_subclass():
 
 
 def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             if msg == "temp":
                 raise TemporaryFailure("process_msg")
             elif msg == "perm":
@@ -98,12 +97,12 @@ def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
 
 
 def test_s3_upload_action_processed(s3_client):
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
-                Messager.S3UploadAction(file_body=b"test_body1", bucket="testbucket2", key="k1"),
-                Messager.S3UploadAction(file_body=b"test_body2", key="k2"),
-                Messager.S3UploadAction(file_body=b"test_body3", mime_type="x-test", key="k3"),
+                Messager.S3UploadAction(file_body="test_body1", bucket="testbucket2", key="k1"),
+                Messager.S3UploadAction(file_body="test_body2", key="k2"),
+                Messager.S3UploadAction(file_body="test_body3", mime_type="x-test", key="k3"),
             )
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
@@ -126,10 +125,10 @@ def test_s3_upload_action_processed(s3_client):
 
 
 def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_client):
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
-                Messager.S3UploadAction(file_body=b"test_body1", bucket="nonexistent", key="k1"),
+                Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),
             )
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
@@ -140,10 +139,10 @@ def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_clie
 
 
 def test_s3_timeout_error_produces_temporary_error_result():
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
-                Messager.S3UploadAction(file_body=b"test_body1", bucket="nonexistent", key="k1"),
+                Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),
             )
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
@@ -157,17 +156,17 @@ def test_s3_timeout_error_produces_temporary_error_result():
 
 
 def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_client):
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=b"test_body1", bucket="testbucket2", cat_path="k1"
+                    file_body="test_body1", bucket="testbucket2", cat_path="k1"
                 ),
-                Messager.OutputFileAction(file_body=b"test_body2", cat_path="k2"),
+                Messager.OutputFileAction(file_body="test_body2", cat_path="k2"),
                 Messager.OutputFileAction(
-                    file_body=b"test_body3", mime_type="x-test", cat_path="k3"
+                    file_body="test_body3", mime_type="x-test", cat_path="k3"
                 ),
-                Messager.OutputFileAction(file_body=b"test_body4", cat_path="k4"),
+                Messager.OutputFileAction(file_body="test_body4", cat_path="k4"),
                 Messager.OutputFileAction(cat_path="k5", file_body=None),
             )
 
@@ -217,9 +216,9 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_clie
 
 
 def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_client):
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
-            return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
+            return (Messager.OutputFileAction(file_body="test_body", cat_path="k"),)
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {"id": sys.stderr}
@@ -231,9 +230,9 @@ def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_cl
 
 
 def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
-    class TestMessager(Messager[str]):
-        def process_msg(self, msg: str) -> Sequence[Action]:
-            return (Messager.OutputFileAction(file_body=b"test_body", cat_path="k"),)
+    class TestMessager(Messager[str, bytes]):
+        def process_msg(self, msg: str) -> Sequence[Messager.Action]:
+            return (Messager.OutputFileAction(file_body="test_body", cat_path="k"),)
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {"id": "test"}
@@ -245,6 +244,36 @@ def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
+def test_adding_changes_to_cataloguechanges_object_results_in_new_object_with_all_changes():
+    changes1 = Messager[bytes, bytes].CatalogueChanges(
+        added=["a", "b"], updated=["c", "d"], deleted=["e", "f"]
+    )
+    changes2 = Messager[bytes, bytes].CatalogueChanges(
+        added=["1", "2"], updated=["3", "4"], deleted=["5", "6"]
+    )
+
+    assert changes1.add(changes2) == Messager[bytes, bytes].CatalogueChanges(
+        added=["a", "b", "1", "2"], updated=["c", "d", "3", "4"], deleted=["e", "f", "5", "6"]
+    )
+
+
+@pytest.mark.parametrize(
+    "added,updated,deleted,expected",
+    [
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+    ],
+)
+def test_cataloguechanges_evaluates_to_true_only_if_change_is_present(
+    added, updated, deleted, expected
+):
+    changes = Messager[bytes, bytes].CatalogueChanges(added=added, updated=updated, deleted=deleted)
+    assert bool(changes) == expected
+
+
 def test_catalogue_change_messager_processes_individual_changes(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
@@ -252,9 +281,8 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=bytes(
-                        f"Updated: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}",
-                        "utf-8",
+                    file_body=(
+                        f"Updated: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"
                     ),
                     cat_path=cat_path,
                 ),
@@ -265,9 +293,8 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=bytes(
-                        f"Deleted: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}",
-                        "utf-8",
+                    file_body=(
+                        f"Deleted: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"
                     ),
                     cat_path=cat_path,
                 ),
@@ -412,10 +439,7 @@ def test_stac_change_messager_processes_only_stac(s3_client):
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=bytes(
-                        f"STAC: {stac.get('id')=}, {cat_path=}, {source=}, {target=}",
-                        "utf-8",
-                    ),
+                    file_body=(f"STAC: {stac.get('id')=}, {cat_path=}, {source=}, {target=}"),
                     cat_path=cat_path,
                 ),
             )
@@ -480,10 +504,10 @@ def test_stac_change_messager_processes_only_stac(s3_client):
     assert actions == [
         Messager.OutputFileAction(
             file_body=(
-                b"STAC: stac.get('id')='sentinel2_ard', "
-                + b"cat_path='path/k4', "
-                + b"source='source-path', "
-                + b"target='target-path'"
+                "STAC: stac.get('id')='sentinel2_ard', "
+                + "cat_path='path/k4', "
+                + "source='source-path', "
+                + "target='target-path'"
             ),
             cat_path="path/k4",
         ),
@@ -497,7 +521,7 @@ def fake_billingevent():
 
 def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):
 
-    class TestJSONMessager(PulsarJSONMessager[BillingEvent]):
+    class TestJSONMessager(PulsarJSONMessager[BillingEvent, bytes]):
         billingevents_received = []
 
         def process_payload(self, be):
