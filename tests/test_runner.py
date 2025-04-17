@@ -67,6 +67,7 @@ def test_setup_logging_doesnt_error():
     eodhp_utils.runner.setup_logging(1)
     eodhp_utils.runner.setup_logging(2)
     eodhp_utils.runner.setup_logging(3)
+    eodhp_utils.runner.setup_logging(4)
 
 
 def test_pulsar_client_uses_arg_over_env_when_set():
