@@ -244,6 +244,36 @@ def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
+def test_adding_changes_to_cataloguechanges_object_results_in_new_object_with_all_changes():
+    changes1 = Messager[bytes, bytes].CatalogueChanges(
+        added=["a", "b"], updated=["c", "d"], deleted=["e", "f"]
+    )
+    changes2 = Messager[bytes, bytes].CatalogueChanges(
+        added=["1", "2"], updated=["3", "4"], deleted=["5", "6"]
+    )
+
+    assert changes1.add(changes2) == Messager[bytes, bytes].CatalogueChanges(
+        added=["a", "b", "1", "2"], updated=["c", "d", "3", "4"], deleted=["e", "f", "5", "6"]
+    )
+
+
+@pytest.mark.parametrize(
+    "added,updated,deleted,expected",
+    [
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+        pytest.param([], [], [], False),
+    ],
+)
+def test_cataloguechanges_evaluates_to_true_only_if_change_is_present(
+    added, updated, deleted, expected
+):
+    changes = Messager[bytes, bytes].CatalogueChanges(added=added, updated=updated, deleted=deleted)
+    assert bool(changes) == expected
+
+
 def test_catalogue_change_messager_processes_individual_changes(s3_client):
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(

@@ -248,7 +248,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         def add(self, other):
             return Messager.CatalogueChanges(
                 added=self.added + other.added,
-                updated=self.updated + other.changed,
+                updated=self.updated + other.updated,
                 deleted=self.deleted + other.deleted,
             )
 
