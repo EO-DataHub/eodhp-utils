@@ -4,17 +4,17 @@
 #
 #    pip-compile --extra=dev --output-file=requirements-dev.txt
 #
-attrs==25.1.0
+attrs==25.3.0
     # via
     #   jsonschema
     #   referencing
 black==25.1.0
     # via eodhp-utils (pyproject.toml)
-boto3==1.37.6
+boto3==1.38.2
     # via
     #   eodhp-utils (pyproject.toml)
     #   moto
-botocore==1.37.6
+botocore==1.38.2
     # via
     #   boto3
     #   eodhp-utils (pyproject.toml)
@@ -36,7 +36,7 @@ click==8.1.8
     # via
     #   black
     #   pip-tools
-coverage==7.6.12
+coverage==7.8.0
     # via eodhp-utils (pyproject.toml)
 cryptography==44.0.2
     # via moto
@@ -48,19 +48,19 @@ distlib==0.3.9
     # via virtualenv
 execnet==2.1.1
     # via pytest-xdist
-faker==36.1.1
+faker==37.1.0
     # via eodhp-utils (pyproject.toml)
 fastjsonschema==2.21.1
     # via validate-pyproject
-filelock==3.17.0
+filelock==3.18.0
     # via virtualenv
-identify==2.6.8
+identify==2.6.10
     # via pre-commit
 idna==3.10
     # via requests
-importlib-metadata==8.5.0
+importlib-metadata==8.6.1
     # via opentelemetry-api
-iniconfig==2.0.0
+iniconfig==2.1.0
     # via pytest
 isort==6.0.1
     # via eodhp-utils (pyproject.toml)
@@ -72,19 +72,19 @@ jmespath==1.0.1
     #   botocore
 jsonschema==4.23.0
     # via eodhp-utils (pyproject.toml)
-jsonschema-specifications==2024.10.1
+jsonschema-specifications==2025.4.1
     # via jsonschema
 markupsafe==3.0.2
     # via
     #   jinja2
     #   werkzeug
-moto==5.1.1
+moto==5.1.4
     # via eodhp-utils (pyproject.toml)
-mypy-extensions==1.0.0
+mypy-extensions==1.1.0
     # via black
 nodeenv==1.9.1
     # via pre-commit
-opentelemetry-api==1.30.0
+opentelemetry-api==1.32.1
     # via
     #   eodhp-utils (pyproject.toml)
     #   opentelemetry-instrumentation
@@ -92,21 +92,21 @@ opentelemetry-api==1.30.0
     #   opentelemetry-processor-baggage
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-instrumentation==0.51b0
+opentelemetry-instrumentation==0.53b1
     # via opentelemetry-instrumentation-logging
-opentelemetry-instrumentation-logging==0.51b0
+opentelemetry-instrumentation-logging==0.53b1
     # via eodhp-utils (pyproject.toml)
-opentelemetry-processor-baggage==0.52b0
+opentelemetry-processor-baggage==0.53b1
     # via eodhp-utils (pyproject.toml)
-opentelemetry-sdk==1.30.0
+opentelemetry-sdk==1.32.1
     # via
     #   eodhp-utils (pyproject.toml)
     #   opentelemetry-processor-baggage
-opentelemetry-semantic-conventions==0.51b0
+opentelemetry-semantic-conventions==0.53b1
     # via
     #   opentelemetry-instrumentation
     #   opentelemetry-sdk
-packaging==24.2
+packaging==25.0
     # via
     #   black
     #   build
@@ -117,13 +117,13 @@ pathspec==0.12.1
     # via black
 pip-tools==7.4.1
     # via eodhp-utils (pyproject.toml)
-platformdirs==4.3.6
+platformdirs==4.3.7
     # via
     #   black
     #   virtualenv
 pluggy==1.5.0
     # via pytest
-pre-commit==4.1.0
+pre-commit==4.2.0
     # via eodhp-utils (pyproject.toml)
 pulsar-client==3.6.1
     # via eodhp-utils (pyproject.toml)
@@ -162,34 +162,34 @@ requests==2.32.3
     # via
     #   moto
     #   responses
-responses==0.25.6
+responses==0.25.7
     # via moto
-rpds-py==0.23.1
+rpds-py==0.24.0
     # via
     #   jsonschema
     #   referencing
-ruff==0.9.9
+ruff==0.11.7
     # via eodhp-utils (pyproject.toml)
-s3transfer==0.11.4
+s3transfer==0.12.0
     # via boto3
 six==1.17.0
     # via python-dateutil
-trove-classifiers==2025.3.3.18
+trove-classifiers==2025.4.11.15
     # via validate-pyproject
-typing-extensions==4.12.2
+typing-extensions==4.13.2
     # via
     #   opentelemetry-sdk
     #   referencing
-tzdata==2025.1
+tzdata==2025.2
     # via faker
-urllib3==2.3.0
+urllib3==2.4.0
     # via
     #   botocore
     #   requests
     #   responses
-validate-pyproject[all]==0.23
+validate-pyproject[all]==0.24.1
     # via eodhp-utils (pyproject.toml)
-virtualenv==20.29.2
+virtualenv==20.30.0
     # via pre-commit
 watchdog==6.0.0
     # via pytest-watcher
