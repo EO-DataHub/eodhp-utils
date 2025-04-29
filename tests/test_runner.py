@@ -1,8 +1,11 @@
 import os
+import threading
 import time
-from typing import Sequence
+from math import ceil
+from typing import Iterator, Sequence
 from unittest import mock
 
+import pytest
 from opentelemetry import trace
 from opentelemetry.baggage import get_baggage, set_baggage
 from opentelemetry.context import attach
@@ -16,6 +19,10 @@ from eodhp_utils.messagers import Messager
 
 class MessagerTester(Messager[str, bytes]):
     messages_received: list[str] = []
+
+    def __init__(self, *args, **kwargs):
+        self.messages_received = []
+        super().__init__(*args, **kwargs)
 
     def process_msg(self, msg: str) -> Sequence[Messager.Action]:
         self.messages_received.append(msg)
@@ -179,3 +186,104 @@ def test_baggage_propagated_across_call():
 
     ###### Check result
     assert msgr.baggage_value == "testval"
+
+
+class IterMessagerTester(Messager[Iterator[str], bytes]):
+    messages_received: list[list[str]] = []
+    thread_ids: set[int]
+
+    def __init__(self, *args, **kwargs):
+        self.messages_received = []
+        self.thread_ids = set()
+        super().__init__(*args, **kwargs)
+
+    def process_msg(self, msg: Iterator[str]) -> Sequence[Messager.Action]:
+        msg_list = list(msg)
+        self.messages_received.append(msg_list)
+        self.thread_ids.add(threading.get_ident())
+
+        # This ensure we need the number of threads the test asks for.
+        time.sleep(0.01)
+
+        if 666 in msg_list:
+            raise ValueError()
+
+        return []
+
+    def gen_empty_catalogue_message(self, msg: str) -> dict:
+        return {}
+
+
+@pytest.mark.parametrize(
+    "length, batch_size, expected",
+    [
+        pytest.param(5, 1, [[0], [1], [2], [3], [4]]),
+        pytest.param(6, 2, [[0, 1], [2, 3], [4, 5]]),
+        pytest.param(7, 2, [[0, 1], [2, 3], [4, 5], [6]]),
+        pytest.param(2, 8, [[0, 1]]),
+        pytest.param(0, 1, []),
+        pytest.param(0, 10, []),
+    ],
+)
+def test_generatorrunner_runs_messager_with_single_thread(length, batch_size, expected):
+    messager = IterMessagerTester()
+
+    gr = eodhp_utils.runner.GeneratorRunner[int, int](
+        messager, mock.MagicMock(name="pulsar-client"), batch_size=batch_size
+    )
+
+    failures = gr.consume(iter(range(length)))
+
+    assert messager.messages_received == expected
+    assert not failures.any_permanent()
+    assert not failures.any_temporary()
+    assert (not messager.thread_ids and not expected) or messager.thread_ids == {
+        threading.get_ident(),
+    }
+
+
+@pytest.mark.parametrize(
+    "length, batch_size, expected",
+    [
+        pytest.param(5, 1, [[0], [1], [2], [3], [4]]),
+        pytest.param(6, 2, [[0, 1], [2, 3], [4, 5]]),
+        pytest.param(7, 2, [[0, 1], [2, 3], [4, 5], [6]]),
+        pytest.param(2, 8, [[0, 1]]),
+        pytest.param(0, 1, []),
+        pytest.param(0, 10, []),
+    ],
+)
+def test_generatorrunner_runs_messager_with_multiple_threads(length, batch_size, expected):
+    for threads in range(1, 10):
+        messager = IterMessagerTester()
+
+        gr = eodhp_utils.runner.GeneratorRunner[int, int](
+            messager, mock.MagicMock(name="pulsar-client"), batch_size=batch_size, threads=threads
+        )
+
+        failures = gr.consume(iter(range(length)))
+
+        assert messager.messages_received == expected
+        assert not failures.any_permanent()
+        assert not failures.any_temporary()
+
+        expected_threads = min(threads, ceil(length / batch_size))
+        print(
+            f"{len(messager.thread_ids)=}, {length=}, {batch_size=}, {threads=}, {expected_threads=}"
+        )
+        assert len(messager.thread_ids) == expected_threads
+
+
+def test_generatorrunner_handles_errors():
+    for threads in range(1, 10):
+        messager = IterMessagerTester()
+
+        gr = eodhp_utils.runner.GeneratorRunner[int, int](
+            messager, mock.MagicMock(name="pulsar-client"), batch_size=4, threads=threads
+        )
+
+        failures = gr.consume([1] * 5 + [666] + [2] * 5)
+
+        assert messager.messages_received == [[1, 1, 1, 1], [1, 666, 2, 2], [2, 2, 2]]
+        assert failures.any_permanent()
+        assert not failures.any_temporary()

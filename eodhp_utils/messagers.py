@@ -232,12 +232,16 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
             return self.temporary or self.key_temporary
 
         def add(self, f):
-            return Messager[MSGTYPE].Failures(
+            return Messager[MSGTYPE, OUTPUTMSGTYPE].Failures(
                 key_permanent=self.key_permanent + f.key_permanent,
                 key_temporary=self.key_temporary + f.key_temporary,
                 permanent=self.permanent or f.permanent,
                 temporary=self.temporary or f.temporary,
             )
+
+        @staticmethod
+        def add_two(a, b):
+            return a.add(b)
 
     @dataclasses.dataclass(kw_only=True)
     class CatalogueChanges:
