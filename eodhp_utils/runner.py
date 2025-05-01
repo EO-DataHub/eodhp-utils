@@ -432,6 +432,7 @@ class GeneratorRunner[MSG, MSGOUT]:
     pulsar_client: Client
     threads: int
     batch_size: int
+    name: str
 
     def __init__(
         self,
@@ -439,21 +440,24 @@ class GeneratorRunner[MSG, MSGOUT]:
         pulsar_client: Client,
         threads=0,
         batch_size=1,
+        name="generator-runner",
     ):
         self.messager = messager
         self.pulsar_client = pulsar_client
         self.threads = threads
         self.batch_size = batch_size
+        self.name = name
 
     def consume(self, inputs: Iterator[MSG]) -> Messager.Failures:
-        batched_inputs = itertools.batched(inputs, self.batch_size)
-        executor = (
-            ImmediateExecutor()
-            if self.threads == 0
-            else ThreadPoolExecutor(max_workers=self.threads)
-        )
-        with executor as executor:
-            all_failures = executor.map(self.messager.consume, batched_inputs)
+        with tracer.start_as_current_span(self.name):
+            batched_inputs = itertools.batched(inputs, self.batch_size)
+            executor = (
+                ImmediateExecutor()
+                if self.threads == 0
+                else ThreadPoolExecutor(max_workers=self.threads)
+            )
+            with executor as executor:
+                all_failures = executor.map(self.messager.consume, batched_inputs)
 
-        failures = reduce(Messager.Failures.add_two, all_failures, Messager.Failures())
-        return failures
+            failures = reduce(Messager.Failures.add_two, all_failures, Messager.Failures())
+            return failures
