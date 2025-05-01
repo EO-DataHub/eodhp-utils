@@ -429,7 +429,6 @@ class GeneratorRunner[MSG, MSGOUT]:
     """
 
     messager: Messager[Iterator[MSG], MSGOUT]
-    pulsar_client: Client
     threads: int
     batch_size: int
     name: str
@@ -437,13 +436,11 @@ class GeneratorRunner[MSG, MSGOUT]:
     def __init__(
         self,
         messager: Messager[Iterator[MSG], MSGOUT],
-        pulsar_client: Client,
         threads=0,
         batch_size=1,
         name="generator-runner",
     ):
         self.messager = messager
-        self.pulsar_client = pulsar_client
         self.threads = threads
         self.batch_size = batch_size
         self.name = name
