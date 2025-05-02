@@ -228,9 +228,7 @@ class IterMessagerTester(Messager[Iterator[str], bytes]):
 def test_generatorrunner_runs_messager_with_single_thread(length, batch_size, expected):
     messager = IterMessagerTester()
 
-    gr = eodhp_utils.runner.GeneratorRunner[int, int](
-        messager, mock.MagicMock(name="pulsar-client"), batch_size=batch_size
-    )
+    gr = eodhp_utils.runner.GeneratorRunner[int, int](messager, batch_size=batch_size)
 
     failures = gr.consume(iter(range(length)))
 
@@ -258,7 +256,7 @@ def test_generatorrunner_runs_messager_with_multiple_threads(length, batch_size,
         messager = IterMessagerTester()
 
         gr = eodhp_utils.runner.GeneratorRunner[int, int](
-            messager, mock.MagicMock(name="pulsar-client"), batch_size=batch_size, threads=threads
+            messager, batch_size=batch_size, threads=threads
         )
 
         failures = gr.consume(iter(range(length)))
@@ -278,9 +276,7 @@ def test_generatorrunner_handles_errors():
     for threads in range(1, 10):
         messager = IterMessagerTester()
 
-        gr = eodhp_utils.runner.GeneratorRunner[int, int](
-            messager, mock.MagicMock(name="pulsar-client"), batch_size=4, threads=threads
-        )
+        gr = eodhp_utils.runner.GeneratorRunner[int, int](messager, batch_size=4, threads=threads)
 
         failures = gr.consume([1] * 5 + [666] + [2] * 5)
 

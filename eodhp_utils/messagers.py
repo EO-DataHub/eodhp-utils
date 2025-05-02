@@ -138,7 +138,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         s3_client=None,
         output_bucket=None,
         cat_output_prefix="",
-        producer: pulsar.Producer = None,
+        producer: Optional[pulsar.Producer] = None,
     ):
         """
         s3_client should be an authenticated boto3 S3 client, such as the result of boto3.client("s3").
