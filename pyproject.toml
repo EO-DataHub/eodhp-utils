@@ -72,7 +72,8 @@ dependencies = [
     "opentelemetry-sdk",
     "opentelemetry-processor-baggage",
     "opentelemetry-instrumentation-logging",
-    "python-json-logger"
+    "python-json-logger",
+    "pysubnettree",
 ]
 
 # List additional groups of dependencies here (e.g. development
@@ -97,6 +98,7 @@ dev = [
     "validate-pyproject[all]",
     "pre-commit",
     "moto",
+    "requests-mock",
 ]
 
 # List URLs that are relevant to your project
@@ -126,6 +128,9 @@ include-package-data = true
 
 [tool.setuptools-git-versioning]
 enabled = true
+
+[tool.setuptools.package-data]
+eodhp_utils = ["*.json"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
