@@ -1,9 +1,12 @@
+import itertools
 import json
 import logging
 import os
 import time
+from concurrent.futures import Executor, Future, ThreadPoolExecutor
+from functools import reduce
 from importlib.metadata import PackageNotFoundError, version
-from typing import Optional
+from typing import Iterator, Optional
 
 import boto3.session
 from opentelemetry import trace
@@ -17,7 +20,7 @@ from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProces
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
 from pythonjsonlogger import jsonlogger
 
-from eodhp_utils.messagers import CatalogueChangeMessager
+from eodhp_utils.messagers import CatalogueChangeMessager, Messager
 
 pulsar_client = None
 aws_client = None
@@ -43,7 +46,9 @@ tracer = trace.get_tracer(__name__)
 def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
     global pulsar_client
     if pulsar_client is None:
-        pulsar_url = pulsar_url or os.environ.get("PULSAR_URL")
+        pulsar_url = pulsar_url or os.environ.get(
+            "PULSAR_URL", "pulsar://pulsar-broker.pulsar:6650"
+        )
         pulsar_client = Client(pulsar_url, message_listener_threads=message_listener_threads)
     return pulsar_client
 
@@ -380,3 +385,76 @@ def run(
     )
 
     runner.run()
+
+
+class ImmediateExecutor(Executor):
+    def submit(self, fn, /, *args, **kwargs):
+        f = Future()
+        try:
+            result = fn(*args, **kwargs)
+            f.set_result(result)
+        except Exception as e:
+            f.set_exception(e)
+
+        return f
+
+
+class GeneratorRunner[MSG, MSGOUT]:
+    """
+    A GeneratorRunner is intended for harvesters and other components which generate Pulsar
+    messages based on something pulled from an external source rather than based on incoming
+    messages.
+
+    To use it:
+      - Write a Python generator which generates objects of type MSG. This generator function
+        can pull the data in them from the external source.
+      - Write a Messager which processes these MSG objects as input and returns Actions as
+        usual.
+      - Create a GeneratorRunner[MSG], passing it an instance of the Messager and choosing a
+        number of threads.
+      - Call my_generatorrunner.consume(generator1) as many times as required.
+        This may be once (typical job-based harvester or billing collector) or repeatedly
+        (polling harvester or accounting collector).
+
+    When this is done, the messager will be called with the generator outputs. If threads=0 then
+    the generator and messager will be called only from the calling thread. If threads=1 then
+    the generator will be called from the calling thread and the messager from another,
+    concurrently. If threads>1 then the messager may be called from multiple threads
+    simultaneously but the generator will still only be called from the calling thread.
+
+    The advantages over using a loop are:
+      - Parallel processing of Actions can be handled by the Messagers framework, eg parallel
+        S3 uploads. This may happen even with threads=1.
+      - If threads > 1, multiple threads may be used to process values from a single generator.
+    """
+
+    messager: Messager[Iterator[MSG], MSGOUT]
+    threads: int
+    batch_size: int
+    name: str
+
+    def __init__(
+        self,
+        messager: Messager[Iterator[MSG], MSGOUT],
+        threads=0,
+        batch_size=1,
+        name="generator-runner",
+    ):
+        self.messager = messager
+        self.threads = threads
+        self.batch_size = batch_size
+        self.name = name
+
+    def consume(self, inputs: Iterator[MSG]) -> Messager.Failures:
+        with tracer.start_as_current_span(self.name):
+            batched_inputs = itertools.batched(inputs, self.batch_size)
+            executor = (
+                ImmediateExecutor()
+                if self.threads == 0
+                else ThreadPoolExecutor(max_workers=self.threads)
+            )
+            with executor as executor:
+                all_failures = executor.map(self.messager.consume, batched_inputs)
+
+            failures = reduce(Messager.Failures.add_two, all_failures, Messager.Failures())
+            return failures
