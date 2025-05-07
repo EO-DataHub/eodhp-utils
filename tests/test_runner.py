@@ -202,7 +202,7 @@ class IterMessagerTester(Messager[Iterator[str], bytes]):
         self.messages_received.append(msg_list)
         self.thread_ids.add(threading.get_ident())
 
-        # This ensure we need the number of threads the test asks for.
+        # This ensures we need the number of threads the test asks for.
         time.sleep(0.01)
 
         if 666 in msg_list:
@@ -266,9 +266,6 @@ def test_generatorrunner_runs_messager_with_multiple_threads(length, batch_size,
         assert not failures.any_temporary()
 
         expected_threads = min(threads, ceil(length / batch_size))
-        print(
-            f"{len(messager.thread_ids)=}, {length=}, {batch_size=}, {threads=}, {expected_threads=}"
-        )
         assert len(messager.thread_ids) == expected_threads
 
 
