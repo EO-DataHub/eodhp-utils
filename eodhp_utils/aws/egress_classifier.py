@@ -4,7 +4,7 @@ import os
 import random
 import time
 from enum import Enum
-from posixpath import dirname
+from os.path import dirname
 from typing import Optional, Tuple
 
 import boto3.session
@@ -29,7 +29,8 @@ class AWSIPClassifier:
     within-region, cross-region or to the internet.
 
     If no current region is given then the code will attempt to detect one. Currently that's via
-    the AWS_DEFAULT_REGION environment variable which is set automatically in EKS.
+    the AWS_DEFAULT_REGION environment variable which is set automatically in EKS. A ValueError
+    is raised if that is not possible.
 
     The IP ranges data from AWS will be saved in /var/cache/eodhp if that's mounted and used if
     the AWS endpoint is not available. If that file is also not available then a bundled copy
@@ -61,6 +62,9 @@ class AWSIPClassifier:
             # Fetching http://169.254.169.254/latest/meta-data/placement/availability-zone is an
             # alternative if this proves inadequate.
             current_region = boto3.session.Session().region_name
+
+            if not current_region:
+                raise ValueError("Either current_region or AWS_DEFAULT_REGION must be set.")
 
         self.aws_ip_data_url = url
         self.current_region = current_region
