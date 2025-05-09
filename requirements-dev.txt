@@ -10,11 +10,11 @@ attrs==25.3.0
     #   referencing
 black==25.1.0
     # via eodhp-utils (pyproject.toml)
-boto3==1.38.2
+boto3==1.38.10
     # via
     #   eodhp-utils (pyproject.toml)
     #   moto
-botocore==1.38.2
+botocore==1.38.10
     # via
     #   boto3
     #   eodhp-utils (pyproject.toml)
@@ -22,7 +22,7 @@ botocore==1.38.2
     #   s3transfer
 build==1.2.2.post1
     # via pip-tools
-certifi==2025.1.31
+certifi==2025.4.26
     # via
     #   pulsar-client
     #   requests
@@ -30,7 +30,7 @@ cffi==1.17.1
     # via cryptography
 cfgv==3.4.0
     # via pre-commit
-charset-normalizer==3.4.1
+charset-normalizer==3.4.2
     # via requests
 click==8.1.8
     # via
@@ -38,7 +38,7 @@ click==8.1.8
     #   pip-tools
 coverage==7.8.0
     # via eodhp-utils (pyproject.toml)
-cryptography==44.0.2
+cryptography==44.0.3
     # via moto
 deprecated==1.2.18
     # via
@@ -133,6 +133,8 @@ pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
+pysubnettree==0.37
+    # via eodhp-utils (pyproject.toml)
 pytest==8.3.5
     # via
     #   eodhp-utils (pyproject.toml)
@@ -160,21 +162,25 @@ referencing==0.36.2
     #   jsonschema-specifications
 requests==2.32.3
     # via
+    #   eodhp-utils (pyproject.toml)
     #   moto
+    #   requests-mock
     #   responses
+requests-mock==1.12.1
+    # via eodhp-utils (pyproject.toml)
 responses==0.25.7
     # via moto
 rpds-py==0.24.0
     # via
     #   jsonschema
     #   referencing
-ruff==0.11.7
+ruff==0.11.8
     # via eodhp-utils (pyproject.toml)
 s3transfer==0.12.0
     # via boto3
 six==1.17.0
     # via python-dateutil
-trove-classifiers==2025.4.11.15
+trove-classifiers==2025.5.1.12
     # via validate-pyproject
 typing-extensions==4.13.2
     # via
@@ -189,7 +195,7 @@ urllib3==2.4.0
     #   responses
 validate-pyproject[all]==0.24.1
     # via eodhp-utils (pyproject.toml)
-virtualenv==20.30.0
+virtualenv==20.31.1
     # via pre-commit
 watchdog==6.0.0
     # via pytest-watcher

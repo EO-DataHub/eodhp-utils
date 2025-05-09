@@ -8,21 +8,27 @@ attrs==25.3.0
     # via
     #   jsonschema
     #   referencing
-boto3==1.38.2
+boto3==1.38.10
     # via eodhp-utils (pyproject.toml)
-botocore==1.38.2
+botocore==1.38.10
     # via
     #   boto3
     #   eodhp-utils (pyproject.toml)
     #   s3transfer
-certifi==2025.1.31
-    # via pulsar-client
+certifi==2025.4.26
+    # via
+    #   pulsar-client
+    #   requests
+charset-normalizer==3.4.2
+    # via requests
 deprecated==1.2.18
     # via
     #   opentelemetry-api
     #   opentelemetry-semantic-conventions
 faker==37.1.0
     # via eodhp-utils (pyproject.toml)
+idna==3.10
+    # via requests
 importlib-metadata==8.6.1
     # via opentelemetry-api
 jmespath==1.0.1
@@ -59,6 +65,8 @@ packaging==25.0
     # via opentelemetry-instrumentation
 pulsar-client==3.6.1
     # via eodhp-utils (pyproject.toml)
+pysubnettree==0.37
+    # via eodhp-utils (pyproject.toml)
 python-dateutil==2.9.0.post0
     # via botocore
 python-json-logger==3.3.0
@@ -67,6 +75,8 @@ referencing==0.36.2
     # via
     #   jsonschema
     #   jsonschema-specifications
+requests==2.32.3
+    # via eodhp-utils (pyproject.toml)
 rpds-py==0.24.0
     # via
     #   jsonschema
@@ -82,7 +92,9 @@ typing-extensions==4.13.2
 tzdata==2025.2
     # via faker
 urllib3==2.4.0
-    # via botocore
+    # via
+    #   botocore
+    #   requests
 wrapt==1.17.2
     # via
     #   deprecated
