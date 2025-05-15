@@ -164,6 +164,11 @@ class AWSIPClassifier:
                 else:
                     aws_tree[cidr6] = EgressClass.INTERREGION.value
 
+        # These are seen when connecting through the S3 gateway in the VPC.
+        current_tree["10.0.0.0/8"] = EgressClass.REGION.value
+        current_tree["172.16.0.0/12"] = EgressClass.REGION.value
+        current_tree["192.168.0.0/16"] = EgressClass.REGION.value
+
         return current_tree, aws_tree
 
     def classify(self, client_ip: str) -> EgressClass:

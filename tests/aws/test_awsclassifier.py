@@ -12,14 +12,14 @@ FAKE_DATA = {
         {
             "service": "AMAZON",
             "region": "eu-west-2",
-            "ip_prefix": "10.1.0.0/16",
+            "ip_prefix": "198.51.100.0/24",
             "ipv6_prefix": "2001:db8::/32",
         },
         # Other-region prefix
         {
             "service": "AMAZON",
             "region": "us-east-1",
-            "ip_prefix": "192.168.0.0/16",
+            "ip_prefix": "192.0.2.0/24",
             "ipv6_prefix": None,
         },
     ]
@@ -39,8 +39,8 @@ def test_ipv4_and_ipv6_classification(requests_mock):
     clf = AWSIPClassifier(current_region="eu-west-2")
 
     # IPv4 tests
-    assert clf.classify("10.1.2.3") == EgressClass.REGION
-    assert clf.classify("192.168.1.1") == EgressClass.INTERREGION
+    assert clf.classify("198.51.100.3") == EgressClass.REGION
+    assert clf.classify("192.0.2.1") == EgressClass.INTERREGION
     assert clf.classify("8.8.8.8") == EgressClass.INTERNET
 
     # IPv6 tests
@@ -48,11 +48,20 @@ def test_ipv4_and_ipv6_classification(requests_mock):
     assert clf.classify("2001:db9::1") == EgressClass.INTERNET
 
 
+def test_private_ipv4_classified_as_regional(requests_mock):
+    requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
+
+    clf = AWSIPClassifier(current_region="eu-west-2")
+    assert clf.classify("192.168.2.3") == EgressClass.REGION
+    assert clf.classify("10.1.2.3") == EgressClass.REGION
+    assert clf.classify("172.17.1.2") == EgressClass.REGION
+
+
 def test_aws_ip_file_loaded_and_used(requests_mock):
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
 
     clf = AWSIPClassifier(current_region="eu-west-2")
-    assert clf.classify("10.1.2.3") == EgressClass.REGION
+    assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
 def test_fallback_file_loaded_and_used_when_aws_fails(requests_mock, ip_data_file):
@@ -61,7 +70,7 @@ def test_fallback_file_loaded_and_used_when_aws_fails(requests_mock, ip_data_fil
     )
 
     clf = AWSIPClassifier(cache_file=ip_data_file, current_region="eu-west-2")
-    assert clf.classify("10.1.2.3") == EgressClass.REGION
+    assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
 def test_bundled_file_loaded_and_used_when_aws_fails_and_no_cache(requests_mock):
@@ -91,13 +100,13 @@ def test_fallback_file_loaded_and_used_when_aws_fails_second_time(requests_mock,
     cachefile = str(tmp_path / "cache-file.json")
 
     clf = AWSIPClassifier(cache_file=cachefile, current_region="eu-west-2")
-    assert clf.classify("10.1.2.3") == EgressClass.REGION
+    assert clf.classify("198.51.100.3") == EgressClass.REGION
 
     requests_mock.get(
         "https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout
     )
     clf = AWSIPClassifier(cache_file=cachefile, current_region="eu-west-2")
-    assert clf.classify("10.1.2.3") == EgressClass.REGION
+    assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
 def test_aws_data_refetched_after_24_hours(requests_mock, tmp_path):
@@ -107,12 +116,12 @@ def test_aws_data_refetched_after_24_hours(requests_mock, tmp_path):
     with mock.patch("eodhp_utils.aws.egress_classifier.time.time") as time_mock:
         time_mock.return_value = 1000000
         clf = AWSIPClassifier(cache_file=cachefile, current_region="eu-west-2")
-        assert clf.classify("10.1.2.3") == EgressClass.REGION
+        assert clf.classify("198.51.100.3") == EgressClass.REGION
 
         requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json={"prefixes": []})
 
         time_mock.return_value = 1000000 + 86399
-        assert clf.classify("10.1.2.3") == EgressClass.REGION
+        assert clf.classify("198.51.100.3") == EgressClass.REGION
 
         time_mock.return_value = 1000000 + 86401
-        assert clf.classify("10.1.2.3") == EgressClass.INTERNET
+        assert clf.classify("198.51.100.3") == EgressClass.INTERNET
