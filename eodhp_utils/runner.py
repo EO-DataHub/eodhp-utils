@@ -281,7 +281,7 @@ class Runner:
 
     def _create_subscriptions(self):
         max_redelivery_count = 3
-        delay_ms = 30000
+        delay_ms = 1000
 
         for topic, messager in self.messagers.items():
             consumer = self._pulsar_client.subscribe(
