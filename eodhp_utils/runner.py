@@ -212,6 +212,7 @@ class Runner:
         This is called asynchronously (there may be multiple threads) when a message is received.
         The message may be for any of our messagers or may be a 'takeover' message.
         """
+        logging.info("A MESSAGE HAS BEEN RECEIVED")
         topic_name = msg.topic_name().split("/")[-1]
 
         if not self.takeover_mode and topic_name == DEBUG_TOPIC:
@@ -296,6 +297,8 @@ class Runner:
                 schema=messager.get_schema(),
                 message_listener=lambda cons, msg: self._listener(cons, msg),
             )
+
+            logging.info("Created consumer for topic %s with subscription %s", topic, self.subscription_name)
 
             self._messager_consumers.append(consumer)
 
