@@ -237,8 +237,10 @@ class Runner:
                 failures = messager.consume(msg)
 
                 if failures.any_temporary():
+                    logging.error("NEGATIVE ACKNOWLEDGE")
                     consumer.negative_acknowledge(msg)
                 else:
+                    logging.error("MESSAGE ACKNOWLEDGED")
                     consumer.acknowledge(msg)
         finally:
             detach(old_context)
