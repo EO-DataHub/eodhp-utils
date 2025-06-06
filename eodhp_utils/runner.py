@@ -24,6 +24,7 @@ from eodhp_utils.messagers import CatalogueChangeMessager, Messager
 
 pulsar_client = None
 aws_client = None
+_component_name = "eodhp-utils"
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
 
@@ -163,6 +164,9 @@ def setup_logging(verbosity=0, enable_otel_logging=None):
 
 def log_component_version(component_name):
     """Logs a version number for a Python component using setuptools-git-versioning."""
+    global _component_name
+    _component_name = component_name
+
     try:
         __version__ = version(component_name)
         logging.info(f"{component_name} starting, version {__version__}")
@@ -282,20 +286,22 @@ class Runner:
         delay_ms = 30000
 
         for topic, messager in self.messagers.items():
-            consumer = self._pulsar_client.subscribe(
-                topic=topic,
-                subscription_name=self.subscription_name,
-                consumer_type=ConsumerType.Shared,
-                dead_letter_policy=ConsumerDeadLetterPolicy(
-                    max_redeliver_count=max_redelivery_count,
-                    dead_letter_topic=f"dead-letter-{self.subscription_name}",  # noqa:F541
-                ),
-                negative_ack_redelivery_delay_ms=delay_ms,
-                schema=messager.get_schema(),
-                message_listener=lambda cons, msg: self._listener(cons, msg),
-            )
+            for i in range(self.threads):
+                consumer = self._pulsar_client.subscribe(
+                    topic=topic,
+                    subscription_name=self.subscription_name,
+                    consumer_type=ConsumerType.Shared,
+                    dead_letter_policy=ConsumerDeadLetterPolicy(
+                        max_redeliver_count=max_redelivery_count,
+                        dead_letter_topic=f"dead-letter-{self.subscription_name}",  # noqa:F541
+                    ),
+                    negative_ack_redelivery_delay_ms=delay_ms,
+                    schema=messager.get_schema(),
+                    message_listener=lambda cons, msg: self._listener(cons, msg),
+                    consumer_name=_component_name + "-" + str(i),
+                )
 
-            self._messager_consumers.append(consumer)
+                self._messager_consumers.append(consumer)
 
     def run(self, max_loops=None):
         """
