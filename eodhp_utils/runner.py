@@ -50,7 +50,13 @@ def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
         pulsar_url = pulsar_url or os.environ.get(
             "PULSAR_URL", "pulsar://pulsar-broker.pulsar:6650"
         )
-        pulsar_client = Client(pulsar_url, message_listener_threads=message_listener_threads)
+        io_threads = int(message_listener_threads / 10) + 1
+        pulsar_client = Client(
+            pulsar_url, message_listener_threads=message_listener_threads, io_threads=io_threads
+        )
+        logging.info(
+            f"Connected to {pulsar_url} with {message_listener_threads=} " + f"and {io_threads=}"
+        )
     return pulsar_client
 
 
