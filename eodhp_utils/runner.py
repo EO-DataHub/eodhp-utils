@@ -2,6 +2,7 @@ import itertools
 import json
 import logging
 import os
+import threading
 import time
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from functools import reduce
@@ -244,6 +245,7 @@ class Runner:
             # Start a new span for this processing step, using a context which is a child of the
             # restored context.
             with tracer.start_as_current_span(self.subscription_name):
+                logging.info(f"Processing msg with thread {threading.get_ident()=}")
                 failures = messager.consume(msg)
 
                 if failures.any_temporary():
