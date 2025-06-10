@@ -89,8 +89,8 @@ def test_pulsar_client_uses_arg_over_env_when_set():
 
         pulsar_client.assert_has_calls(
             (
-                mock.call("pulsar://example.com/1", message_listener_threads=1),
-                mock.call("pulsar://example.com/2", message_listener_threads=1),
+                mock.call("pulsar://example.com/1", message_listener_threads=1, io_threads=1),
+                mock.call("pulsar://example.com/2", message_listener_threads=1, io_threads=1),
             )
         )
 

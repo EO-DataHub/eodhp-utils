@@ -373,7 +373,9 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
             # Send Pulsar message with trace context
             self.producer.send(action.payload, properties=properties)
 
-            logging.debug(f"Message sent to Pulsar: {action.payload=} {properties=}")
+            logging.debug(
+                "Message sent to Pulsar: payload=%s properties=%s", action.payload, properties
+            )
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
@@ -505,7 +507,7 @@ class CatalogueChangeMessager(Messager[Message, bytes], ABC):
                             target,
                         )
 
-                    logging.debug(f"{entry_actions=}")
+                    logging.debug("entry_actions=%s", entry_actions)
                     all_actions += entry_actions
                 except (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError) as e:
                     if _is_boto_error_temporary(e):
