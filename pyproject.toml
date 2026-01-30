@@ -53,6 +53,7 @@ dependencies = [
     "python-json-logger",
     "pysubnettree",
     "requests",
+    "coverage>=7.13.2",
 ]
 
 [dependency-groups]
