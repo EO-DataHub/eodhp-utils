@@ -14,18 +14,14 @@
 
 [project]
 name = "eodhp-utils"
-# Version is calculated by setuptools-git-versioning from the Git tag.
 dynamic = ["version"]
 description = "Utilities for use on EODHP"
 readme = "README.md"
 
-requires-python = ">=3.12"
+requires-python = ">=3.13,<3.14"
 
 license = {file = "LICENSE"}
 
-# This should be your name or the name of the organization who originally
-# authored the project, and a valid email address corresponding to the name
-# listed.
 authors = [
  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
@@ -34,34 +30,16 @@ maintainers = [
  {name = "Telespazio UK Ltd", email = "hannah.collingwood@telespazio.com" }
 ]
 
-# Classifiers help users find your project by categorizing it.
-#
-# For a list of valid classifiers, see https://pypi.org/classifiers/
 classifiers = [
-  # How mature is this project? Common values are
-  #   3 - Alpha
-  #   4 - Beta
-  #   5 - Production/Stable
   "Development Status :: 3 - Alpha",
-
-  # Indicate who your project is intended for
   "Intended Audience :: Science/Research",
   "Intended Audience :: Developers",
-
   "License :: OSI Approved :: Apache Software License",
-  # "License :: Other/Proprietary License",
-
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3 :: Only",
 ]
 
-# This field lists other packages that your project depends on to run.
-# Any package you put here will be installed by pip when your project is
-# installed, so they must be valid existing projects.
-#
-# For an analysis of this field vs pip's requirements files see:
-# https://packaging.python.org/discussions/install-requires-vs-requirements/
 dependencies = [
     "jsonschema",
     "botocore",
@@ -77,111 +55,67 @@ dependencies = [
     "requests",
 ]
 
-# List additional groups of dependencies here (e.g. development
-# dependencies). Users will be able to install these using the "extras"
-# syntax, for example:
-#
-#   $ pip install sampleproject[dev]
-#
-# Similar to `dependencies` above, these must be valid existing
-# projects.
-[project.optional-dependencies] # Optional
+[dependency-groups]
 dev = [
-    "pip-tools",
+    "pre-commit",
+    "pyright",
     "pytest",
-    "pytest-xdist",
     "pytest-mock",
     "pytest-watcher",
-    "black",
+    "pytest-xdist",
     "ruff",
-    "coverage",
-    "isort",
-    "validate-pyproject[all]",
-    "pre-commit",
+    "validate-pyproject",
     "moto",
     "requests-mock",
 ]
 
-# List URLs that are relevant to your project
-#
-# This field corresponds to the "Project-URL" and "Home-Page" metadata fields:
-# https://packaging.python.org/specifications/core-metadata/#project-url-multiple-use
-# https://packaging.python.org/specifications/core-metadata/#home-page-optional
-#
-# Examples listed include a pattern for specifying where the package tracks
-# issues, where the source is hosted, where to say thanks to the package
-# maintainers, and where to support the project financially. The key is
-# what's used to render the link text on PyPI.
-[project.urls]  # Optional
-homepage = "https://github.com/UKEODHP/"
-repository = "https://github.com/UKEODHP/eodhp-utils"
-changelog = "https://github.com/UKEODHP/eodhp-utils/master/CHANGELOG.md"
+[project.urls]
+homepage = "https://github.com/EO-DataHub/"
+repository = "https://github.com/EO-DataHub/eodhp-utils"
+changelog = "https://github.com/EO-DataHub/eodhp-utils/master/CHANGELOG.md"
+
+[tool.uv]
+package = true
 
 [build-system]
-# These are the assumed default build requirements from pip:
-# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
-requires = ["setuptools>=69.0.0", "wheel", "setuptools-git-versioning>=2.0,<3"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "uv-dynamic-versioning"]
+build-backend = "hatchling.build"
 
-[tool.setuptools]
-packages = ["eodhp_utils", "eodhp_utils.pulsar", "eodhp_utils.aws"]
-include-package-data = true
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
 
-[tool.setuptools-git-versioning]
-enabled = true
-
-[tool.setuptools.package-data]
-eodhp_utils = ["*.json"]
+[tool.hatch.build.targets.wheel]
+packages = ["eodhp_utils"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+addopts = ["--import-mode=importlib"]
 markers = [
   "integrationtest: Integration test"
 ]
 
-[tool.black]
-line-length = 100
-target-version = ['py312']
-
 [tool.ruff]
-line-length = 110
-target-version = "py312"
+line-length = 119
 
 [tool.ruff.lint]
-select = ["E", "F", "B", "W", "I"]
-
-exclude = [
-    ".bzr",
-    ".direnv",
-    ".eggs",
-    ".git",
-    ".git-rewrite",
-    ".hg",
-    ".mypy_cache",
-    ".nox",
-    ".pants.d",
-    ".pytype",
-    ".ruff_cache",
-    ".svn",
-    ".tox",
-    ".venv",
-    "__pypackages__",
-    "_build",
-    "buck-out",
-    "build",
-    "dist",
-    "node_modules",
-    "venv",
+select = [
+    "E",    # Pycodestyle errors
+    "W",    # Pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "FAST", # FastAPI
+    "RUF",  # RUF-specific rules
+    "SIM",  # Simplifications
+    "B",    # Bugbear
+    "ANN",  # Annotations
+    "PLC",  # Pylint convention
+    "PLE",  # Pylint errors
+    "UP",   # pyupgrade
+    "FURB", # refurb
+    "PT",   # pytest
 ]
-
-[tool.pylint.'MESSAGES CONTROL']
-disable = '''
-    line-too-long,
-    missing-class-docstring,
-    too-many-locals,
-    too-many-instance-attributes,
-    logging-fstring-interpolation,
-'''
-
-[tool.isort]
-profile = "black"
+ignore = [
+    "E501",   # line too long
+    "SIM108", # ternary operator
+    "SIM103", # return bool directly
+    "B008"    # function call in default argument (incompatible with FastAPI)
+]

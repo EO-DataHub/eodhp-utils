@@ -1,51 +1,56 @@
-.PHONY: dockerbuild dockerpush test testonce ruff black lint isort pre-commit-check requirements-update requirements setup
 VERSION ?= latest
 IMAGENAME = eodhp-utils
-DOCKERREPO ?= public.ecr.aws/n1b3o1k2/ukeodhp
+DOCKERREPO ?= public.ecr.aws/eodh
+uv-run ?= uv run --no-sync
 
+.PHONY: dockerbuild
+dockerbuild:
+	DOCKER_BUILDKIT=1 docker build -t ${IMAGENAME}:${VERSION} .
+
+.PHONY: dockerpush
+dockerpush: dockerbuild
+	docker tag ${IMAGENAME}:${VERSION} ${DOCKERREPO}/${IMAGENAME}:${VERSION}
+	docker push ${DOCKERREPO}/${IMAGENAME}:${VERSION}
+
+.PHONY: test
 test:
-	./venv/bin/ptw tests
+	${uv-run} ptw .
 
+.PHONY: testonce
 testonce:
-	./venv/bin/pytest
-
-ruff:
-	./venv/bin/ruff check . --ignore I001
-
-black:
-	./venv/bin/black .
-
-isort:
-	./venv/bin/isort . --profile black
-
-validate-pyproject:
-	validate-pyproject pyproject.toml
-
-lint: ruff black isort validate-pyproject
-
-requirements.txt: venv pyproject.toml
-	./venv/bin/pip-compile
-
-requirements-dev.txt: venv pyproject.toml
-	./venv/bin/pip-compile --extra dev -o requirements-dev.txt
-
-requirements: requirements.txt requirements-dev.txt
-
-requirements-update: venv
-	./venv/bin/pip-compile -U
-	./venv/bin/pip-compile --extra dev -o requirements-dev.txt -U
-
-venv:
-	# You may need: sudo apt install python3.12-dev python3.12-venv
-	python3.12 -m venv venv --upgrade-deps
-	./venv/bin/pip3 install pip-tools
-
-.make-venv-installed: venv requirements.txt requirements-dev.txt
-	./venv/bin/pip3 install -r requirements.txt -r requirements-dev.txt
-	touch .make-venv-installed
+	${uv-run} pytest
 
 .git/hooks/pre-commit:
-	./venv/bin/pre-commit install
+	${uv-run} pre-commit install
 	curl -o .pre-commit-config.yaml https://raw.githubusercontent.com/EO-DataHub/github-actions/main/.pre-commit-config-python.yaml
 
-setup: venv requirements .make-venv-installed .git/hooks/pre-commit
+.PHONY: setup
+setup: update .git/hooks/pre-commit
+
+.PHONY: pre-commit
+pre-commit:
+	${uv-run} pre-commit
+
+.PHONY: pre-commit-all
+pre-commit-all:
+	${uv-run} pre-commit run --all-files
+
+.PHONY: check
+check:
+	${uv-run} ruff check
+	${uv-run} ruff format --check --diff
+	${uv-run} pyright
+	${uv-run} validate-pyproject pyproject.toml
+
+.PHONY: format
+format:
+	${uv-run} ruff check --fix
+	${uv-run} ruff format
+
+.PHONY: install
+install:
+	uv sync --frozen
+
+.PHONY: update
+update:
+	uv sync
