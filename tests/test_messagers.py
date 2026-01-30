@@ -1,14 +1,16 @@
 import json
 import sys
-from typing import Sequence
+from collections.abc import Generator, Sequence
+from typing import ClassVar
 from unittest.mock import Mock
 
 import boto3
-import botocore
 import moto
 import pulsar
 import pulsar.exceptions
 import pytest
+from botocore.client import BaseClient
+from botocore.exceptions import ClientError, ConnectTimeoutError
 from pulsar import Message
 
 from eodhp_utils.messagers import (
@@ -26,22 +28,21 @@ OUTPUT_ROOT = "https://output.root.test"
 
 
 @pytest.fixture
-def s3_client():
+def s3_client() -> Generator[BaseClient]:
     # See https://github.com/getmoto/moto/issues/1568 for some details on the AWS mocks.
     #
     # This must be a context manager (no @mock_aws annotation), this fixture must yield and not
     # return and the tests shouldn't have @mock_aws themselves (although this seems to work now).
     with moto.mock_aws():
-        conn = boto3.resource("s3")
-        client = boto3.client("s3")
+        client = boto3.client("s3", region_name="eu-west-2")
         cbconfig = {
             "LocationConstraint": "eu-west-2",
         }
-        conn.create_bucket(
+        client.create_bucket(
             Bucket="testbucket",
             CreateBucketConfiguration=cbconfig,
         )
-        conn.create_bucket(
+        client.create_bucket(
             Bucket="testbucket2",
             CreateBucketConfiguration=cbconfig,
         )
@@ -57,7 +58,7 @@ def pulsar_message_from_dict(val: dict) -> Message:
     return testmsg
 
 
-def test_messages_delivered_to_messager_subclass():
+def test_messages_delivered_to_messager_subclass() -> None:
     messages_received = []
 
     class TestMessager(Messager[str, bytes]):
@@ -76,7 +77,7 @@ def test_messages_delivered_to_messager_subclass():
     assert messages_received == ["string-1", "string-2"]
 
 
-def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
+def test_temporary_or_permanent_failure_from_subclass_recorded_in_result() -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             if msg == "temp":
@@ -96,7 +97,7 @@ def test_temporary_or_permanent_failure_from_subclass_recorded_in_result():
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=False)
 
 
-def test_s3_upload_action_processed(s3_client):
+def test_s3_upload_action_processed(s3_client: BaseClient) -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
@@ -124,12 +125,10 @@ def test_s3_upload_action_processed(s3_client):
     assert obj1["Body"].read() == b"test_body3"
 
 
-def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_client):
+def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_client: BaseClient) -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
-            return (
-                Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),
-            )
+            return (Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),)
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {}
@@ -138,34 +137,28 @@ def test_s3_upload_to_nonexistent_bucket_produces_permanent_error_result(s3_clie
     assert testmessager.consume("") == Messager.Failures(permanent=True, temporary=False)
 
 
-def test_s3_timeout_error_produces_temporary_error_result():
+def test_s3_timeout_error_produces_temporary_error_result() -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
-            return (
-                Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),
-            )
+            return (Messager.S3UploadAction(file_body="test_body1", bucket="nonexistent", key="k1"),)
 
         def gen_empty_catalogue_message(self, msg: str) -> dict:
             return {}
 
     client = Mock()
-    client.put_object.side_effect = botocore.exceptions.ConnectTimeoutError(endpoint_url="")
+    client.put_object.side_effect = ConnectTimeoutError(endpoint_url="")
 
     testmessager = TestMessager(client, "testbucket", "testprefix/")
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
-def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_client):
+def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_client: BaseClient) -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (
-                Messager.OutputFileAction(
-                    file_body="test_body1", bucket="testbucket2", cat_path="k1"
-                ),
+                Messager.OutputFileAction(file_body="test_body1", bucket="testbucket2", cat_path="k1"),
                 Messager.OutputFileAction(file_body="test_body2", cat_path="k2"),
-                Messager.OutputFileAction(
-                    file_body="test_body3", mime_type="x-test", cat_path="k3"
-                ),
+                Messager.OutputFileAction(file_body="test_body3", mime_type="x-test", cat_path="k3"),
                 Messager.OutputFileAction(file_body="test_body4", cat_path="k4"),
                 Messager.OutputFileAction(cat_path="k5", file_body=None),
             )
@@ -199,10 +192,9 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_clie
     assert obj1["ContentType"] == "application/json"
     assert obj1["Body"].read() == b"test_body4"
 
-    try:
-        obj1 = s3_client.get_object(Bucket="testbucket", Key="testprefix/k5")
-    except botocore.exceptions.ClientError as e:
-        assert e.response["Error"]["Code"] == "NoSuchKey" or e.response["Error"]["Code"] == "404"
+    with pytest.raises(ClientError) as exc_info:
+        s3_client.get_object(Bucket="testbucket", Key="testprefix/k5")
+    assert exc_info.value.response["Error"]["Code"] in ("NoSuchKey", "404")
 
     message = producer.send.call_args.args[0]
     sys.stderr.write(f"{message=}")
@@ -215,7 +207,7 @@ def test_output_file_action_catalogue_change_message_sent_and_s3_updated(s3_clie
     }
 
 
-def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_client):
+def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_client: BaseClient) -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (Messager.OutputFileAction(file_body="test_body", cat_path="k"),)
@@ -229,7 +221,7 @@ def test_output_file_action_treats_invalid_message_json_as_permanent_error(s3_cl
     assert testmessager.consume("") == Messager.Failures(permanent=True, temporary=False)
 
 
-def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
+def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client: BaseClient) -> None:
     class TestMessager(Messager[str, bytes]):
         def process_msg(self, msg: str) -> Sequence[Messager.Action]:
             return (Messager.OutputFileAction(file_body="test_body", cat_path="k"),)
@@ -244,13 +236,9 @@ def test_output_file_action_treats_pulsar_timeout_as_temporary_error(s3_client):
     assert testmessager.consume("") == Messager.Failures(permanent=False, temporary=True)
 
 
-def test_adding_changes_to_cataloguechanges_object_results_in_new_object_with_all_changes():
-    changes1 = Messager[bytes, bytes].CatalogueChanges(
-        added=["a", "b"], updated=["c", "d"], deleted=["e", "f"]
-    )
-    changes2 = Messager[bytes, bytes].CatalogueChanges(
-        added=["1", "2"], updated=["3", "4"], deleted=["5", "6"]
-    )
+def test_adding_changes_to_cataloguechanges_object_results_in_new_object_with_all_changes() -> None:
+    changes1 = Messager[bytes, bytes].CatalogueChanges(added=["a", "b"], updated=["c", "d"], deleted=["e", "f"])
+    changes2 = Messager[bytes, bytes].CatalogueChanges(added=["1", "2"], updated=["3", "4"], deleted=["5", "6"])
 
     assert changes1.add(changes2) == Messager[bytes, bytes].CatalogueChanges(
         added=["a", "b", "1", "2"], updated=["c", "d", "3", "4"], deleted=["e", "f", "5", "6"]
@@ -258,32 +246,26 @@ def test_adding_changes_to_cataloguechanges_object_results_in_new_object_with_al
 
 
 @pytest.mark.parametrize(
-    "added,updated,deleted,expected",
+    ("added", "updated", "deleted", "expected"),
     [
-        pytest.param([], [], [], False),
-        pytest.param([], [], [], False),
-        pytest.param([], [], [], False),
-        pytest.param([], [], [], False),
         pytest.param([], [], [], False),
     ],
 )
 def test_cataloguechanges_evaluates_to_true_only_if_change_is_present(
-    added, updated, deleted, expected
-):
+    added: list, updated: list, deleted: list, expected: bool
+) -> None:
     changes = Messager[bytes, bytes].CatalogueChanges(added=added, updated=updated, deleted=deleted)
     assert bool(changes) == expected
 
 
-def test_catalogue_change_messager_processes_individual_changes(s3_client):
+def test_catalogue_change_messager_processes_individual_changes(s3_client: BaseClient) -> None:
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=(
-                        f"Updated: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"
-                    ),
+                    file_body=(f"Updated: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"),
                     cat_path=cat_path,
                 ),
             )
@@ -293,9 +275,7 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
         ) -> Sequence[Messager.Action]:
             return (
                 Messager.OutputFileAction(
-                    file_body=(
-                        f"Deleted: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"
-                    ),
+                    file_body=(f"Deleted: {input_bucket=}, {input_key=}, {cat_path=}, {source=}, {target=}"),
                     cat_path=cat_path,
                 ),
             )
@@ -384,7 +364,7 @@ def test_catalogue_change_messager_processes_individual_changes(s3_client):
     }
 
 
-def test_catalogue_change_messager_aggregates_individual_failures(s3_client):
+def test_catalogue_change_messager_aggregates_individual_failures(s3_client: BaseClient) -> None:
     class TestCatalogueChangeMessager(CatalogueChangeMessager):
         def process_update(
             self, input_bucket: str, input_key: str, cat_path: str, source: str, target: str
@@ -432,7 +412,7 @@ def test_catalogue_change_messager_aggregates_individual_failures(s3_client):
     )
 
 
-def test_stac_change_messager_processes_only_stac(s3_client):
+def test_stac_change_messager_processes_only_stac(s3_client: BaseClient) -> None:
     class TestCatalogueChangeMessager(CatalogueSTACChangeMessager):
         def process_update_stac(
             self, stac: dict, cat_path: str, source: str, target: str
@@ -456,9 +436,7 @@ def test_stac_change_messager_processes_only_stac(s3_client):
         Body=b"notjson",
     )
 
-    s3_client.put_object(
-        Bucket="testbucket", Key="testprefix-in/path/k2", ContentType="text/plain", Body=b"notjson"
-    )
+    s3_client.put_object(Bucket="testbucket", Key="testprefix-in/path/k2", ContentType="text/plain", Body=b"notjson")
 
     s3_client.put_object(
         Bucket="testbucket",
@@ -515,16 +493,15 @@ def test_stac_change_messager_processes_only_stac(s3_client):
 
 
 @pytest.fixture
-def fake_billingevent():
+def fake_billingevent() -> BillingEvent:
     return BillingEvent.get_fake()
 
 
-def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent):
-
+def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billingevent: BillingEvent) -> None:
     class TestJSONMessager(PulsarJSONMessager[BillingEvent, bytes]):
-        billingevents_received = []
+        billingevents_received: ClassVar[list] = []
 
-        def process_payload(self, be):
+        def process_payload(self, be: BillingEvent) -> list:
             self.billingevents_received.append(be)
             print(f"{be=}")
             return []
@@ -541,7 +518,7 @@ def test_pulsarjsonmessager_decodes_billingevent_message_correctly(fake_billinge
     testmsg = Mock()
     testmsg.data = Mock(return_value=schema.encode(fake_billingevent))
     msg = Message._wrap(testmsg)
-    msg._schema = schema
+    object.__setattr__(msg, "_schema", schema)
 
     testmessager = TestJSONMessager(None, None)
     testmessager.consume(msg)

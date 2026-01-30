@@ -1,7 +1,9 @@
 import json
+from typing import cast
 
-import jsonschema
 import pytest
+from jsonschema.exceptions import ValidationError
+from pulsar import Message
 
 from eodhp_utils.pulsar.messages import (
     BillingEvent,
@@ -15,7 +17,7 @@ from eodhp_utils.pulsar.messages import (
 
 
 class MockMessage:
-    def __init__(self):
+    def __init__(self) -> None:
         self.message = {
             "id": "1234abcd",
             "bucket_name": "my_bucket",
@@ -26,16 +28,16 @@ class MockMessage:
             "target": "target",
         }
 
-    def data(self):
+    def data(self) -> bytes:
         return json.dumps(self.message).encode("utf-8")
 
 
 @pytest.fixture
-def mock_message():
+def mock_message() -> MockMessage:
     return MockMessage()
 
 
-def test_generate_harvest_schema():
+def test_generate_harvest_schema() -> None:
     schema = generate_harvest_schema()
 
     assert len(schema.keys()) == 3
@@ -43,13 +45,13 @@ def test_generate_harvest_schema():
     assert len(schema["required"]) == 3
 
 
-def test_generate_schema__empty():
+def test_generate_schema__empty() -> None:
     schema = generate_schema()
 
     assert set(schema.keys()) == {"type", "properties", "required"}
 
 
-def test_generate_schema__required():
+def test_generate_schema__required() -> None:
     required = ["a", "b", "c"]
     schema = generate_schema(required=required)
 
@@ -57,7 +59,7 @@ def test_generate_schema__required():
     assert schema["required"] == required
 
 
-def test_generate_schema__properties():
+def test_generate_schema__properties() -> None:
     properties = {"a": 1, "b": 2, "c": 3}
     schema = generate_schema(properties=properties)
 
@@ -65,29 +67,29 @@ def test_generate_schema__properties():
     assert schema["properties"] == properties
 
 
-def test_get_data(mock_message):
-    data = get_message_data(mock_message)
+def test_get_data(mock_message: MockMessage) -> None:
+    data = get_message_data(cast(Message, mock_message))
 
     assert data == MockMessage().message
 
 
-def test_get_message_data__schema(mock_message):
+def test_get_message_data__schema(mock_message: MockMessage) -> None:
     schema = generate_schema()
-    data = get_message_data(mock_message, schema)
+    data = get_message_data(cast(Message, mock_message), schema)
 
     assert data == MockMessage().message
 
 
-def test_get_message_data__schema_fail(mock_message):
+def test_get_message_data__schema_fail(mock_message: MockMessage) -> None:
     schema = generate_harvest_schema()
     mock_message.message = {"different_key": "different value"}
-    with pytest.raises(jsonschema.exceptions.ValidationError) as e:
-        get_message_data(mock_message, schema)
+    with pytest.raises(ValidationError) as e:
+        get_message_data(cast(Message, mock_message), schema)
 
     assert "is a required property" in e.value.args[0]
 
 
-def test_generate_billingevent_schema_encode_decode_restores_object():
+def test_generate_billingevent_schema_encode_decode_restores_object() -> None:
     schema = generate_billingevent_schema()
 
     be = BillingEvent.get_fake()
@@ -98,7 +100,7 @@ def test_generate_billingevent_schema_encode_decode_restores_object():
     assert decd == be
 
 
-def test_generate_workspacesettings_schema_encode_decode_restores_object():
+def test_generate_workspacesettings_schema_encode_decode_restores_object() -> None:
     schema = generate_workspacesettings_schema()
 
     ws = WorkspaceSettings.get_fake()

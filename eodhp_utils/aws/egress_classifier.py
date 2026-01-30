@@ -5,7 +5,6 @@ import random
 import time
 from enum import Enum
 from os.path import dirname
-from typing import Optional, Tuple
 
 import boto3.session
 import requests
@@ -52,10 +51,10 @@ class AWSIPClassifier:
 
     def __init__(
         self,
-        current_region: str = None,
+        current_region: str | None = None,
         url: str = "https://ip-ranges.amazonaws.com/ip-ranges.json",
         cache_file: str = "/var/cache/eodhp/eodhp-utils/ip-ranges.json",
-    ):
+    ) -> None:
         if current_region is None:
             # This uses AWS_DEFAULT_REGION from the environment.
             #
@@ -72,17 +71,13 @@ class AWSIPClassifier:
 
         self._build_tree()
 
-    def _build_tree(self):
-        ip_data = (
-            self._get_ip_data_from_aws()
-            or self._get_cached_ip_data()
-            or self._get_bundled_ip_data()
-        )
+    def _build_tree(self) -> None:
+        ip_data = self._get_ip_data_from_aws() or self._get_cached_ip_data() or self._get_bundled_ip_data()
 
         self.current_tree, self.aws_tree = self.build_trees(ip_data, self.current_region)
         self.load_time = time.time()
 
-    def _get_ip_data_from_aws(self) -> Optional[dict]:
+    def _get_ip_data_from_aws(self) -> dict | None:
         logger.debug("Fetching AWS IP address file from %s", self.aws_ip_data_url)
 
         try:
@@ -100,12 +95,12 @@ class AWSIPClassifier:
             logger.exception("Failed to fetch AWS IP address file at %s", self.aws_ip_data_url)
             return None
 
-    def _get_cached_ip_data(self) -> Optional[dict]:
+    def _get_cached_ip_data(self) -> dict | None:
         try:
-            with open(self.fallback_file, "r") as f:
+            with open(self.fallback_file) as f:
                 ip_data = json.load(f)
                 return ip_data if isinstance(ip_data, dict) else None
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             logger.warning(
                 "Invalid or inaccessible AWS IP ranges cache file, %s. Ignoring.",
                 self.fallback_file,
@@ -114,11 +109,11 @@ class AWSIPClassifier:
 
     def _get_bundled_ip_data(self) -> dict:
         bundled_file = dirname(__file__) + os.sep + "ip-ranges.json"
-        with open(bundled_file, "r") as f:
+        with open(bundled_file) as f:
             raw = f.read()
             return json.loads(raw)
 
-    def _write_cache_file(self, content: bytes):
+    def _write_cache_file(self, content: bytes) -> None:
         if not os.access(dirname(self.fallback_file), 0):
             logger.warning("Cache directory %s does not exist - not caching", self.fallback_file)
             return
@@ -133,9 +128,7 @@ class AWSIPClassifier:
         logging.info("Wrote cache file %s", self.fallback_file)
 
     @staticmethod
-    def build_trees(
-        ip_data: dict, current_region: str
-    ) -> Tuple[SubnetTree.SubnetTree, SubnetTree.SubnetTree]:
+    def build_trees(ip_data: dict, current_region: str) -> tuple[SubnetTree.SubnetTree, SubnetTree.SubnetTree]:
         """
         Builds two SubnetTree objects:
         - current_tree: ranges for the specified current_region
