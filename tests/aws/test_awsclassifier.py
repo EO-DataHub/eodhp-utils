@@ -1,8 +1,10 @@
 import json
+import pathlib
 from unittest import mock
 
 import pytest
 import requests
+import requests_mock as rm
 
 from eodhp_utils.aws.egress_classifier import AWSIPClassifier, EgressClass
 
@@ -27,13 +29,13 @@ FAKE_DATA = {
 
 
 @pytest.fixture
-def ip_data_file(tmp_path):
+def ip_data_file(tmp_path: pathlib.Path) -> str:
     path = tmp_path / "ips.json"
     path.write_text(json.dumps(FAKE_DATA))
     return str(path)
 
 
-def test_ipv4_and_ipv6_classification(requests_mock):
+def test_ipv4_and_ipv6_classification(requests_mock: rm.Mocker) -> None:
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
 
     clf = AWSIPClassifier(current_region="eu-west-2")
@@ -48,7 +50,7 @@ def test_ipv4_and_ipv6_classification(requests_mock):
     assert clf.classify("2001:db9::1") == EgressClass.INTERNET
 
 
-def test_private_ipv4_classified_as_regional(requests_mock):
+def test_private_ipv4_classified_as_regional(requests_mock: rm.Mocker) -> None:
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
 
     clf = AWSIPClassifier(current_region="eu-west-2")
@@ -57,35 +59,31 @@ def test_private_ipv4_classified_as_regional(requests_mock):
     assert clf.classify("172.17.1.2") == EgressClass.REGION
 
 
-def test_aws_ip_file_loaded_and_used(requests_mock):
+def test_aws_ip_file_loaded_and_used(requests_mock: rm.Mocker) -> None:
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
 
     clf = AWSIPClassifier(current_region="eu-west-2")
     assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
-def test_fallback_file_loaded_and_used_when_aws_fails(requests_mock, ip_data_file):
-    requests_mock.get(
-        "https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout
-    )
+def test_fallback_file_loaded_and_used_when_aws_fails(requests_mock: rm.Mocker, ip_data_file: str) -> None:
+    requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout)
 
     clf = AWSIPClassifier(cache_file=ip_data_file, current_region="eu-west-2")
     assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
-def test_bundled_file_loaded_and_used_when_aws_fails_and_no_cache(requests_mock):
-    requests_mock.get(
-        "https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout
-    )
+def test_bundled_file_loaded_and_used_when_aws_fails_and_no_cache(requests_mock: rm.Mocker) -> None:
+    requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout)
 
     clf = AWSIPClassifier(cache_file=".nonexistent-file", current_region="eu-west-2")
     assert clf.classify("3.4.12.4") == EgressClass.INTERREGION
 
 
-def test_bundled_file_loaded_and_used_when_aws_fails_and_invalid_cache(requests_mock, tmp_path):
-    requests_mock.get(
-        "https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout
-    )
+def test_bundled_file_loaded_and_used_when_aws_fails_and_invalid_cache(
+    requests_mock: rm.Mocker, tmp_path: pathlib.Path
+) -> None:
+    requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout)
 
     testfile = str(tmp_path / "test-file.json")
     with open(testfile, "w") as f:
@@ -95,21 +93,21 @@ def test_bundled_file_loaded_and_used_when_aws_fails_and_invalid_cache(requests_
     assert clf.classify("3.4.12.4") == EgressClass.INTERREGION
 
 
-def test_fallback_file_loaded_and_used_when_aws_fails_second_time(requests_mock, tmp_path):
+def test_fallback_file_loaded_and_used_when_aws_fails_second_time(
+    requests_mock: rm.Mocker, tmp_path: pathlib.Path
+) -> None:
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
     cachefile = str(tmp_path / "cache-file.json")
 
     clf = AWSIPClassifier(cache_file=cachefile, current_region="eu-west-2")
     assert clf.classify("198.51.100.3") == EgressClass.REGION
 
-    requests_mock.get(
-        "https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout
-    )
+    requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", exc=requests.exceptions.ConnectTimeout)
     clf = AWSIPClassifier(cache_file=cachefile, current_region="eu-west-2")
     assert clf.classify("198.51.100.3") == EgressClass.REGION
 
 
-def test_aws_data_refetched_after_24_hours(requests_mock, tmp_path):
+def test_aws_data_refetched_after_24_hours(requests_mock: rm.Mocker, tmp_path: pathlib.Path) -> None:
     requests_mock.get("https://ip-ranges.amazonaws.com/ip-ranges.json", json=FAKE_DATA)
     cachefile = str(tmp_path / "cache-file.json")
 

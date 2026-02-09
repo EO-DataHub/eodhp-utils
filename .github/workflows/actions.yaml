@@ -1,45 +1,25 @@
 name: All checks
 on:
-  workflow_call:
   push:
     tags:
-      - "v[0-9]+"
-      - "v[0-9]+-*"
-      - "v[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+-*"
-      - "v[0-9]+.[0-9]+.[0-9]+"
-      - "v[0-9]+.[0-9]+.[0-9]+-*"
+      - 'v[0-9]+'
+      - 'v[0-9]+-*'
+      - 'v[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+-*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
     branches:
-      - "**"
+      - '**'
+  pull_request: ~
 
 jobs:
-  pre-commit-preparation:
-    name: Pre-commit
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v3
-
-      - name: Copy config
-        run: |
-          if [ ! -f .pre-commit-config.yaml ]; then
-            curl -o .pre-commit-config.yaml https://raw.githubusercontent.com/EO-DataHub/github-actions/main/.pre-commit-config-python.yaml
-          fi
-
-      - uses: pre-commit/action@v3.0.1
+  qa:
+    uses: EO-DataHub/github-actions/.github/workflows/qa-python.yaml@main
 
   security-scan:
     name: Call Security Scan
     uses: EO-DataHub/github-actions/.github/workflows/security.yaml@main
-    permissions:
-      contents: read
 
   unit-tests:
     name: Run unit tests
-    uses: EO-DataHub/github-actions/.github/workflows/unit-tests-python.yaml@main
-    permissions:
-      contents: read
-    with:
-      PYTHON_VERSION: "3.12"
+    uses: EO-DataHub/github-actions/.github/workflows/unit-tests-python-uv.yaml@main

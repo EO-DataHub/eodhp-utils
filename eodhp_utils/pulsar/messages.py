@@ -1,10 +1,14 @@
+from __future__ import annotations
+
 import json
+import types
 import typing
 import uuid
-from datetime import timezone
+from datetime import UTC
 
 import jsonschema
 from faker import Faker
+from pulsar import Message
 from pulsar.schema import Array, Double, JsonSchema, Record, Schema, String
 
 
@@ -18,7 +22,7 @@ class BillingEvent(Record):
     quantity = Double()
 
     @staticmethod
-    def get_fake():
+    def get_fake() -> BillingEvent:
         """
         This returns a fake BillingEvent - useful for tests.
 
@@ -30,7 +34,7 @@ class BillingEvent(Record):
         be = BillingEvent()
         be.uuid = fake.uuid4()
 
-        start = fake.past_datetime("-30d", tzinfo=timezone.utc)
+        start = fake.past_datetime("-30d", tzinfo=UTC)
         be.event_start = start.isoformat()
         be.event_end = (start + fake.time_delta("+10m")).isoformat()
         be.sku = fake.pystr(4, 10)
@@ -54,12 +58,14 @@ class BillingResourceConsumptionRateSample(Record):
     rate = Double()
 
     @staticmethod
-    def get_fake(sample_time: typing.Optional[str] = None, rate=None, workspace=None, sku=None):
+    def get_fake(
+        sample_time: str | None = None, rate: float | None = None, workspace: str | None = None, sku: str | None = None
+    ) -> BillingResourceConsumptionRateSample:
         fake = Faker()
 
         crs = BillingResourceConsumptionRateSample()
         crs.uuid = fake.uuid4()
-        crs.sample_time = sample_time or fake.past_datetime("-1h", tzinfo=timezone.utc).isoformat()
+        crs.sample_time = sample_time or fake.past_datetime("-1h", tzinfo=UTC).isoformat()
         crs.sku = sku or fake.pystr(4, 10)
         crs.user = fake.uuid4()
         crs.workspace = workspace or fake.user_name()
@@ -67,7 +73,7 @@ class BillingResourceConsumptionRateSample(Record):
 
         return crs
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return (
             "BillingResourceConsumptionRateSample("
             + f"{self.uuid=}, "
@@ -94,7 +100,7 @@ class WorkspaceObjectStoreSettings(Record):
     access_url = String()
 
     @staticmethod
-    def get_fake():
+    def get_fake() -> WorkspaceObjectStoreSettings:
         fake = Faker()
 
         obj = WorkspaceObjectStoreSettings()
@@ -117,7 +123,7 @@ class WorkspaceBlockStoreSettings(Record):
     mount_point = String()
 
     @staticmethod
-    def get_fake():
+    def get_fake() -> WorkspaceBlockStoreSettings:
         fake = Faker()
 
         obj = WorkspaceBlockStoreSettings()
@@ -134,7 +140,7 @@ class WorkspaceStoresSettings(Record):
     block = Array(WorkspaceBlockStoreSettings())
 
     @staticmethod
-    def get_fake():
+    def get_fake() -> WorkspaceStoresSettings:
         obj = WorkspaceStoresSettings()
         obj.object = [WorkspaceObjectStoreSettings.get_fake()]
         obj.block = [WorkspaceBlockStoreSettings.get_fake()]
@@ -152,7 +158,7 @@ class WorkspaceSettings(Record):
     last_update = String()  # ISO date
 
     @staticmethod
-    def get_fake():
+    def get_fake() -> WorkspaceSettings:
         fake = Faker()
 
         obj = WorkspaceSettings()
@@ -162,7 +168,7 @@ class WorkspaceSettings(Record):
         obj.member_group = obj.name + "-group"
         obj.status = "created"
         obj.stores = [WorkspaceStoresSettings.get_fake()]
-        obj.last_update = fake.past_datetime("-30d", tzinfo=timezone.utc).isoformat()
+        obj.last_update = fake.past_datetime("-30d", tzinfo=UTC).isoformat()
 
         return obj
 
@@ -171,7 +177,7 @@ def generate_workspacesettings_schema() -> Schema:
     return JsonSchema(WorkspaceSettings)
 
 
-def generate_harvest_schema():
+def generate_harvest_schema() -> dict:
     """Generates a populated JSON schema for the harvester"""
     properties = {
         "id": {"type": "string"},
@@ -186,9 +192,7 @@ def generate_harvest_schema():
     return generate_schema(properties=properties, required=required)
 
 
-def generate_schema(
-    properties: typing.Optional[dict] = None, required: typing.Optional[list] = None
-) -> dict:
+def generate_schema(properties: dict | None = None, required: list | None = None) -> dict:
     """Generates a JSON schema with 'type", 'required' and 'properties' fields"""
 
     if properties is None:
@@ -202,7 +206,7 @@ def generate_schema(
     }
 
 
-def get_message_data(msg, schema=None):
+def get_message_data(msg: Message, schema: dict | None = None) -> dict:
     """Collects and formats message data. Checks against a schema if one is provided"""
     data = msg.data().decode("utf-8")
     data_dict = json.loads(data)
@@ -211,7 +215,7 @@ def get_message_data(msg, schema=None):
     return data_dict
 
 
-def get_schema_for_type_annotation(cls, base_cls, annotation_index) -> Schema:
+def get_schema_for_type_annotation(cls: type, base_cls: type, annotation_index: int) -> Schema:
     """
     This finds the Pulsar Schema associated with a class given as a type annotation.
 
@@ -219,7 +223,7 @@ def get_schema_for_type_annotation(cls, base_cls, annotation_index) -> Schema:
     get_schema_for_type_annotation(MySubclass().__class__, MyClass, 0) will return the Schema
     for Msg.
     """
-    bases = typing.types.get_original_bases(cls)
+    bases = types.get_original_bases(cls)
     for base in bases:
         if typing.get_origin(base) == base_cls:
             payloadobj_class = typing.get_args(base)[annotation_index]

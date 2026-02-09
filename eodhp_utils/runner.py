@@ -4,10 +4,11 @@ import logging
 import os
 import threading
 import time
+from collections.abc import Callable, Iterator
 from concurrent.futures import Executor, Future, ThreadPoolExecutor
 from functools import reduce
 from importlib.metadata import PackageNotFoundError, version
-from typing import Iterator, Optional
+from typing import cast
 
 import boto3.session
 from opentelemetry import trace
@@ -18,8 +19,9 @@ from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanP
 from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
-from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType
-from pythonjsonlogger import jsonlogger
+from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType, Message
+from pulsar.schema import BytesSchema
+from pythonjsonlogger.json import JsonFormatter
 
 from eodhp_utils.messagers import CatalogueChangeMessager, Messager
 
@@ -45,23 +47,17 @@ else:
 tracer = trace.get_tracer(__name__)
 
 
-def get_pulsar_client(pulsar_url=None, message_listener_threads=1):
+def get_pulsar_client(pulsar_url: str | None = None, message_listener_threads: int = 1) -> Client:
     global pulsar_client
     if pulsar_client is None:
-        pulsar_url = pulsar_url or os.environ.get(
-            "PULSAR_URL", "pulsar://pulsar-broker.pulsar:6650"
-        )
+        pulsar_url = pulsar_url or os.environ.get("PULSAR_URL", "pulsar://pulsar-broker.pulsar:6650")
         io_threads = int(message_listener_threads / 10) + 1
-        pulsar_client = Client(
-            pulsar_url, message_listener_threads=message_listener_threads, io_threads=io_threads
-        )
-        logging.info(
-            f"Connected to {pulsar_url} with {message_listener_threads=} " + f"and {io_threads=}"
-        )
+        pulsar_client = Client(pulsar_url, message_listener_threads=message_listener_threads, io_threads=io_threads)
+        logging.info(f"Connected to {pulsar_url} with {message_listener_threads=} " + f"and {io_threads=}")
     return pulsar_client
 
 
-def get_boto3_session():
+def get_boto3_session() -> boto3.session.Session:
     global aws_client
     if not aws_client:
         aws_client = boto3.session.Session(
@@ -69,9 +65,7 @@ def get_boto3_session():
             # used in EODH.
             #
             # If these are not set then Boto will look in locations like ~/.aws/credentials.
-            aws_access_key_id=(
-                os.environ.get("AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID")
-            ),
+            aws_access_key_id=(os.environ.get("AWS_ACCESS_KEY") or os.environ.get("AWS_ACCESS_KEY_ID")),
             aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
         )
     return aws_client
@@ -89,7 +83,7 @@ class AddBaggageToLogFilter(logging.Filter):
     Use `attach(set_baggage("key", "value"))` to add values.
     """
 
-    def filter(self, record):
+    def filter(self, record: logging.LogRecord) -> bool:
         baggage = get_all()
         for key, value in baggage.items():
             setattr(record, key, value)
@@ -97,7 +91,7 @@ class AddBaggageToLogFilter(logging.Filter):
         return True
 
 
-def setup_logging(verbosity=0, enable_otel_logging=None):
+def setup_logging(verbosity: int = 0, enable_otel_logging: bool | None = None) -> None:
     """
     This should be called based on command line arguments. eg:
 
@@ -112,9 +106,7 @@ def setup_logging(verbosity=0, enable_otel_logging=None):
     the OTEL_SERVICE_NAME environment variable is set.
     """
     enable_otel_logging = (
-        enable_otel_logging
-        or "KUBERNETES_SERVICE_HOST" in os.environ
-        or "OTEL_SERVICE_NAME" in os.environ
+        enable_otel_logging or "KUBERNETES_SERVICE_HOST" in os.environ or "OTEL_SERVICE_NAME" in os.environ
     )
 
     if enable_otel_logging:
@@ -127,7 +119,7 @@ def setup_logging(verbosity=0, enable_otel_logging=None):
         #  - Add OTel Baggage to the logs so that context is logged and searchable (filter)
         handler = logging.StreamHandler()
 
-        formatter = jsonlogger.JsonFormatter()
+        formatter = JsonFormatter()
         handler.setFormatter(formatter)
 
         root_logger = logging.getLogger()
@@ -169,7 +161,7 @@ def setup_logging(verbosity=0, enable_otel_logging=None):
         logging.getLogger().setLevel(logging.DEBUG)
 
 
-def log_component_version(component_name):
+def log_component_version(component_name: str) -> None:
     """Logs a version number for a Python component using setuptools-git-versioning."""
     global _component_name
     _component_name = component_name
@@ -186,23 +178,23 @@ class Runner:
     messagers: dict[str, CatalogueChangeMessager]
     subscription_name: str
     takeover_mode: bool
-    msg_limit: Optional[int]
-    pulsar_url: Optional[str]
+    msg_limit: int | None
+    pulsar_url: str | None
     threads: int
 
     _pulsar_client: Client
-    _suspended_until: int
+    _suspended_until: float
     _messager_consumers: list[Consumer]
 
     def __init__(
         self,
         messagers: dict[str, CatalogueChangeMessager],
         subscription_name: str,
-        takeover_mode=False,
-        msg_limit=None,
-        pulsar_url=None,
-        threads=1,
-    ):
+        takeover_mode: bool = False,
+        msg_limit: int | None = None,
+        pulsar_url: str | None = None,
+        threads: int = 1,
+    ) -> None:
         self.messagers = messagers
         self.subscription_name = subscription_name
         self.takeover_mode = takeover_mode
@@ -210,15 +202,13 @@ class Runner:
         self.pulsar_url = pulsar_url
         self.threads = threads
 
-        self._pulsar_client = get_pulsar_client(
-            pulsar_url=pulsar_url, message_listener_threads=threads
-        )
-        self._suspended_until = 0
+        self._pulsar_client = get_pulsar_client(pulsar_url=pulsar_url, message_listener_threads=threads)
+        self._suspended_until = 0.0
         self._messager_consumers = []
 
         self._create_subscriptions()
 
-    def _listener(self, consumer, msg):
+    def _listener(self, consumer: Consumer, msg: Message) -> None:
         """
         This is called asynchronously (there may be multiple threads) when a message is received.
         The message may be for any of our messagers or may be a 'takeover' message.
@@ -233,7 +223,7 @@ class Runner:
         else:
             self._process_messager_msg(topic_name, consumer, msg)
 
-    def _process_messager_msg(self, topic_name, consumer, msg):
+    def _process_messager_msg(self, topic_name: str, consumer: Consumer, msg: Message) -> None:
         messager = self.messagers[topic_name]
 
         # Extract and activate OpenTelemetry trace context from Pulsar message
@@ -255,7 +245,7 @@ class Runner:
         finally:
             detach(old_context)
 
-    def _process_takeover(self, consumer, msg):
+    def _process_takeover(self, consumer: Consumer, msg: Message) -> None:
         """
         Allow another runner to take over for SUSPEND_TIME seconds. ie, stop processing any
         normal messages and process only further takeover messages (which will extend this time).
@@ -274,22 +264,20 @@ class Runner:
             )
 
             suspension_remaining = self._suspended_until - now
-            logging.warning(
-                f"Takeover active, pausing message reception for {suspension_remaining}"
-            )
+            logging.warning(f"Takeover active, pausing message reception for {suspension_remaining}")
 
             for consumer in self._messager_consumers:
                 consumer.pause_message_listener()
 
-    def _end_takeover(self):
+    def _end_takeover(self) -> None:
         for consumer in self._messager_consumers:
             consumer.resume_message_listener()
 
-        self._suspended_until = 0
+        self._suspended_until = 0.0
 
         logging.warning("Takeover ended")
 
-    def _create_subscriptions(self):
+    def _create_subscriptions(self) -> None:
         max_redelivery_count = 3
         delay_ms = 30000
 
@@ -301,17 +289,17 @@ class Runner:
                     consumer_type=ConsumerType.Shared,
                     dead_letter_policy=ConsumerDeadLetterPolicy(
                         max_redeliver_count=max_redelivery_count,
-                        dead_letter_topic=f"dead-letter-{self.subscription_name}",  # noqa:F541
+                        dead_letter_topic=f"dead-letter-{self.subscription_name}",
                     ),
                     negative_ack_redelivery_delay_ms=delay_ms,
-                    schema=messager.get_schema(),
+                    schema=cast(BytesSchema, messager.get_schema()),
                     message_listener=lambda cons, msg: self._listener(cons, msg),
                     consumer_name=_component_name + "-" + str(i),
                 )
 
                 self._messager_consumers.append(consumer)
 
-    def run(self, max_loops=None):
+    def run(self, max_loops: int | None = None) -> None:
         """
         Runner main loop.
         """
@@ -328,6 +316,8 @@ class Runner:
         #  - We send a takeover message every SUSPEND_TIME/2 milliseconds
         #  - We ignore takeover messages.
         #
+        takeover_producer = None
+        takeover_msg = ""
         if self.takeover_mode:
             takeover_producer = self._pulsar_client.create_producer(
                 topic=DEBUG_TOPIC,
@@ -345,11 +335,11 @@ class Runner:
         # Messages are processed in other threads. This loop is here to handle takeover mode and
         # msg_limit.
         while True:
-            if self._suspended_until != 0:
-                if self._suspended_until < time.time():
-                    self._end_takeover()
+            if self._suspended_until != 0 and self._suspended_until < time.time():
+                self._end_takeover()
 
             if self.takeover_mode:
+                assert takeover_producer is not None
                 logging.debug("Sending takeover message")
                 takeover_producer.send(bytes(takeover_msg, "utf-8"))
 
@@ -364,11 +354,11 @@ class Runner:
 def run(
     messagers: dict[str, CatalogueChangeMessager],
     subscription_name: str,
-    takeover_mode=False,
-    msg_limit=None,
-    pulsar_url=None,
-    threads=1,
-):
+    takeover_mode: bool = False,
+    msg_limit: int | None = None,
+    pulsar_url: str | None = None,
+    threads: int = 1,
+) -> None:
     """Run loop to monitor arrival of pulsar messages on a given topic.
 
     Example usage:
@@ -402,7 +392,7 @@ def run(
 
 
 class ImmediateExecutor(Executor):
-    def submit(self, fn, /, *args, **kwargs):
+    def submit(self, fn: Callable[..., object], /, *args: object, **kwargs: object) -> Future:
         f = Future()
         try:
             result = fn(*args, **kwargs)
@@ -450,10 +440,10 @@ class GeneratorRunner[MSG, MSGOUT]:
     def __init__(
         self,
         messager: Messager[Iterator[MSG], MSGOUT],
-        threads=0,
-        batch_size=1,
-        name="generator-runner",
-    ):
+        threads: int = 0,
+        batch_size: int = 1,
+        name: str = "generator-runner",
+    ) -> None:
         self.messager = messager
         self.threads = threads
         self.batch_size = batch_size
@@ -461,12 +451,8 @@ class GeneratorRunner[MSG, MSGOUT]:
 
     def consume(self, inputs: Iterator[MSG]) -> Messager.Failures:
         with tracer.start_as_current_span(self.name):
-            batched_inputs = itertools.batched(inputs, self.batch_size)
-            executor = (
-                ImmediateExecutor()
-                if self.threads == 0
-                else ThreadPoolExecutor(max_workers=self.threads)
-            )
+            batched_inputs = itertools.batched(inputs, self.batch_size, strict=False)
+            executor = ImmediateExecutor() if self.threads == 0 else ThreadPoolExecutor(max_workers=self.threads)
             with executor as executor:
                 all_failures = executor.map(self.messager.consume, batched_inputs)
 

@@ -1,11 +1,14 @@
 import os
 import threading
 import time
+from collections.abc import Iterator, Sequence
 from math import ceil
-from typing import Iterator, Sequence
+from typing import cast
 from unittest import mock
 
+import pulsar
 import pytest
+from botocore.client import BaseClient
 from opentelemetry import trace
 from opentelemetry.baggage import get_baggage, set_baggage
 from opentelemetry.context import attach
@@ -14,15 +17,19 @@ from opentelemetry.propagate import inject
 import eodhp_utils
 import eodhp_utils.runner
 from eodhp_utils import runner
-from eodhp_utils.messagers import Messager
+from eodhp_utils.messagers import CatalogueChangeMessager, Messager
 
 
 class MessagerTester(Messager[str, bytes]):
-    messages_received: list[str] = []
-
-    def __init__(self, *args, **kwargs):
-        self.messages_received = []
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        s3_client: BaseClient | None = None,
+        output_bucket: str | None = None,
+        cat_output_prefix: str = "",
+        producer: pulsar.Producer | None = None,
+    ) -> None:
+        self.messages_received: list[str] = []
+        super().__init__(s3_client, output_bucket, cat_output_prefix, producer)
 
     def process_msg(self, msg: str) -> Sequence[Messager.Action]:
         self.messages_received.append(msg)
@@ -36,19 +43,17 @@ class MessagerTester(Messager[str, bytes]):
         return {}
 
 
-def test_s3_session_uses_supplied_key():
+def test_s3_session_uses_supplied_key() -> None:
     runner.aws_client = None
 
-    with mock.patch.dict(
-        os.environ, {"AWS_ACCESS_KEY": "ACCESSKEY", "AWS_SECRET_ACCESS_KEY": "SECKEY"}
-    ):
+    with mock.patch.dict(os.environ, {"AWS_ACCESS_KEY": "ACCESSKEY", "AWS_SECRET_ACCESS_KEY": "SECKEY"}):
         sess = runner.get_boto3_session()
 
         assert sess.get_credentials().secret_key == "SECKEY"
         assert sess.get_credentials().access_key == "ACCESSKEY"
 
 
-def test_messagers_given_messages():
+def test_messagers_given_messages() -> None:
     with mock.patch("eodhp_utils.runner.get_pulsar_client"):
         ########### Setup
         # Mock a messager that returns no error.
@@ -69,7 +74,7 @@ def test_messagers_given_messages():
         mock_consumer.acknowledge.assert_called_once_with(mock_message)
 
 
-def test_setup_logging_doesnt_error():
+def test_setup_logging_doesnt_error() -> None:
     eodhp_utils.runner.setup_logging(0)
     eodhp_utils.runner.setup_logging(1)
     eodhp_utils.runner.setup_logging(2)
@@ -77,7 +82,7 @@ def test_setup_logging_doesnt_error():
     eodhp_utils.runner.setup_logging(4)
 
 
-def test_pulsar_client_uses_arg_over_env_when_set():
+def test_pulsar_client_uses_arg_over_env_when_set() -> None:
     with (
         mock.patch("eodhp_utils.runner.Client") as pulsar_client,
         mock.patch.dict(os.environ, {"PULSAR_URL": "pulsar://example.com/2"}),
@@ -95,7 +100,7 @@ def test_pulsar_client_uses_arg_over_env_when_set():
         )
 
 
-def test_takeover_sends_takeover_messages():
+def test_takeover_sends_takeover_messages() -> None:
     # Tests that, in takover mode, we send a takeover message every 2.5S.
     with (
         mock.patch("eodhp_utils.runner.get_pulsar_client") as mock_getclient,
@@ -106,9 +111,7 @@ def test_takeover_sends_takeover_messages():
         mock_getclient().subscribe.return_value = mock_consumer
 
         ####### Run runner
-        runner = eodhp_utils.runner.Runner(
-            {"tst": mock.MagicMock()}, "test-subscription", takeover_mode=True
-        )
+        runner = eodhp_utils.runner.Runner({"tst": mock.MagicMock()}, "test-subscription", takeover_mode=True)
         runner.run(max_loops=4)
 
         ####### Check behaviour
@@ -128,7 +131,7 @@ def test_takeover_sends_takeover_messages():
         mock_consumer.resume_message_listener.assert_not_called()
 
 
-def test_takeover_results_in_pause():
+def test_takeover_results_in_pause() -> None:
     # Tests that, when a takeover happens, other consumers pause message reception.
     with (
         mock.patch("eodhp_utils.runner.get_pulsar_client") as mock_getclient,
@@ -158,7 +161,7 @@ def test_takeover_results_in_pause():
         mock_consumer.resume_message_listener.assert_called_once()
 
 
-def test_baggage_propagated_across_call():
+def test_baggage_propagated_across_call() -> None:
     ######### Setup - get a simulated set of properties which would be attached to a Pulsar msg.
     tracer = trace.get_tracer(__name__)
     with tracer.start_as_current_span("harvester_span"):
@@ -181,23 +184,28 @@ def test_baggage_propagated_across_call():
     msgr = MessagerBaggageTester()
 
     ######### Test
-    runner = eodhp_utils.runner.Runner({"test-topic": msgr}, "test-subscription")
+    runner = eodhp_utils.runner.Runner({"test-topic": cast(CatalogueChangeMessager, msgr)}, "test-subscription")
     runner._listener(mock.MagicMock(), mock_message)
 
     ###### Check result
     assert msgr.baggage_value == "testval"
 
 
-class IterMessagerTester(Messager[Iterator[str], bytes]):
-    messages_received: list[list[str]] = []
+class IterMessagerTester(Messager[Iterator[int], bytes]):
     thread_ids: set[int]
 
-    def __init__(self, *args, **kwargs):
-        self.messages_received = []
+    def __init__(
+        self,
+        s3_client: BaseClient | None = None,
+        output_bucket: str | None = None,
+        cat_output_prefix: str = "",
+        producer: pulsar.Producer | None = None,
+    ) -> None:
+        self.messages_received: list[list[int]] = []
         self.thread_ids = set()
-        super().__init__(*args, **kwargs)
+        super().__init__(s3_client, output_bucket, cat_output_prefix, producer)
 
-    def process_msg(self, msg: Iterator[str]) -> Sequence[Messager.Action]:
+    def process_msg(self, msg: Iterator[int]) -> Sequence[Messager.Action]:
         msg_list = list(msg)
         self.messages_received.append(msg_list)
         self.thread_ids.add(threading.get_ident())
@@ -210,12 +218,12 @@ class IterMessagerTester(Messager[Iterator[str], bytes]):
 
         return []
 
-    def gen_empty_catalogue_message(self, msg: str) -> dict:
+    def gen_empty_catalogue_message(self, msg: Iterator[int]) -> dict:
         return {}
 
 
 @pytest.mark.parametrize(
-    "length, batch_size, expected",
+    ("length", "batch_size", "expected"),
     [
         pytest.param(5, 1, [[0], [1], [2], [3], [4]]),
         pytest.param(6, 2, [[0, 1], [2, 3], [4, 5]]),
@@ -225,10 +233,12 @@ class IterMessagerTester(Messager[Iterator[str], bytes]):
         pytest.param(0, 10, []),
     ],
 )
-def test_generatorrunner_runs_messager_with_single_thread(length, batch_size, expected):
+def test_generatorrunner_runs_messager_with_single_thread(
+    length: int, batch_size: int, expected: list[list[int]]
+) -> None:
     messager = IterMessagerTester()
 
-    gr = eodhp_utils.runner.GeneratorRunner[int, int](messager, batch_size=batch_size)
+    gr = eodhp_utils.runner.GeneratorRunner[int, bytes](messager, batch_size=batch_size)
 
     failures = gr.consume(iter(range(length)))
 
@@ -241,7 +251,7 @@ def test_generatorrunner_runs_messager_with_single_thread(length, batch_size, ex
 
 
 @pytest.mark.parametrize(
-    "length, batch_size, expected",
+    ("length", "batch_size", "expected"),
     [
         pytest.param(5, 1, [[0], [1], [2], [3], [4]]),
         pytest.param(6, 2, [[0, 1], [2, 3], [4, 5]]),
@@ -251,13 +261,13 @@ def test_generatorrunner_runs_messager_with_single_thread(length, batch_size, ex
         pytest.param(0, 10, []),
     ],
 )
-def test_generatorrunner_runs_messager_with_multiple_threads(length, batch_size, expected):
+def test_generatorrunner_runs_messager_with_multiple_threads(
+    length: int, batch_size: int, expected: list[list[int]]
+) -> None:
     for threads in range(1, 10):
         messager = IterMessagerTester()
 
-        gr = eodhp_utils.runner.GeneratorRunner[int, int](
-            messager, batch_size=batch_size, threads=threads
-        )
+        gr = eodhp_utils.runner.GeneratorRunner[int, bytes](messager, batch_size=batch_size, threads=threads)
 
         failures = gr.consume(iter(range(length)))
 
@@ -269,13 +279,13 @@ def test_generatorrunner_runs_messager_with_multiple_threads(length, batch_size,
         assert len(messager.thread_ids) == expected_threads
 
 
-def test_generatorrunner_handles_errors():
+def test_generatorrunner_handles_errors() -> None:
     for threads in range(1, 10):
         messager = IterMessagerTester()
 
-        gr = eodhp_utils.runner.GeneratorRunner[int, int](messager, batch_size=4, threads=threads)
+        gr = eodhp_utils.runner.GeneratorRunner[int, bytes](messager, batch_size=4, threads=threads)
 
-        failures = gr.consume([1] * 5 + [666] + [2] * 5)
+        failures = gr.consume(iter([1] * 5 + [666] + [2] * 5))
 
         assert messager.messages_received == [[1, 1, 1, 1], [1, 666, 2, 2], [2, 2, 2]]
         assert failures.any_permanent()

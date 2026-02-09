@@ -1,13 +1,17 @@
+from __future__ import annotations
+
 import dataclasses
 import json
 import logging
 from abc import ABC, abstractmethod
-from typing import Iterable, Optional, Union
+from collections.abc import Iterable
+from typing import cast
 
 import botocore
 import botocore.exceptions
 import pulsar
 import pulsar.exceptions
+from botocore.client import BaseClient
 from opentelemetry.propagate import inject
 from pulsar import Message
 from pulsar.schema import BytesSchema, Record, Schema
@@ -29,7 +33,7 @@ class TemporaryFailure(Exception):
 
 
 def _is_boto_error_temporary(
-    exc: Union[botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError],
+    exc: botocore.exceptions.BotoCoreError | botocore.exceptions.ClientError,
 ) -> bool:
     temp_excepts = (
         botocore.exceptions.ConnectionError,
@@ -135,11 +139,11 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
 
     def __init__(
         self,
-        s3_client=None,
-        output_bucket=None,
-        cat_output_prefix="",
-        producer: Optional[pulsar.Producer] = None,
-    ):
+        s3_client: BaseClient | None = None,
+        output_bucket: str | None = None,
+        cat_output_prefix: str = "",
+        producer: pulsar.Producer | None = None,
+    ) -> None:
         """
         s3_client should be an authenticated boto3 S3 client, such as the result of boto3.client("s3").
         output_bucket is used for all S3 operations where no bucket is specified.
@@ -163,8 +167,8 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
 
     @dataclasses.dataclass(kw_only=True)
     class S3Action(Action, ABC):
-        bucket: Optional[str] = None  # Defaults to messager.output_bucket
-        file_body: Optional[str]  # None means delete the file
+        bucket: str | None = None  # Defaults to messager.output_bucket
+        file_body: str | None  # None means delete the file
         mime_type: str = "application/json"
         cache_control: str = "max-age=0"
 
@@ -204,7 +208,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         catalogue change message entry.
         """
 
-        key: Optional[str] = None
+        key: str | None = None
         permanent: bool = True
 
     @dataclasses.dataclass(kw_only=True)
@@ -225,14 +229,14 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         permanent: bool = False
         temporary: bool = False
 
-        def any_permanent(self):
-            return self.permanent or self.key_permanent
+        def any_permanent(self) -> bool:
+            return self.permanent or bool(self.key_permanent)
 
-        def any_temporary(self):
-            return self.temporary or self.key_temporary
+        def any_temporary(self) -> bool:
+            return self.temporary or bool(self.key_temporary)
 
-        def add(self, f):
-            return Messager[MSGTYPE, OUTPUTMSGTYPE].Failures(
+        def add(self, f: Messager.Failures) -> Messager.Failures:
+            return Messager.Failures(
                 key_permanent=self.key_permanent + f.key_permanent,
                 key_temporary=self.key_temporary + f.key_temporary,
                 permanent=self.permanent or f.permanent,
@@ -240,7 +244,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
             )
 
         @staticmethod
-        def add_two(a, b):
+        def add_two(a: Messager.Failures, b: Messager.Failures) -> Messager.Failures:
             return a.add(b)
 
     @dataclasses.dataclass(kw_only=True)
@@ -249,14 +253,14 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         updated: list[str] = dataclasses.field(default_factory=list)
         deleted: list[str] = dataclasses.field(default_factory=list)
 
-        def add(self, other):
+        def add(self, other: Messager.CatalogueChanges) -> Messager.CatalogueChanges:
             return Messager.CatalogueChanges(
                 added=self.added + other.added,
                 updated=self.updated + other.updated,
                 deleted=self.deleted + other.deleted,
             )
 
-        def __bool__(self):
+        def __bool__(self) -> bool:
             return bool(self.added or self.updated or self.deleted)
 
     @dataclasses.dataclass(kw_only=True)
@@ -286,16 +290,14 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
 
         return msg
 
-    def is_temporary_error(self, e: Exception):
+    def is_temporary_error(self, e: Exception) -> bool:
         """
         This guesses whether an exception is a temporary or permanent error.
 
         Subclasses may override this to handle exceptions not handled here. This handles only
         boto and Pulsar exceptions.
         """
-        if isinstance(e, botocore.exceptions.BotoCoreError) or isinstance(
-            e, botocore.exceptions.ClientError
-        ):
+        if isinstance(e, (botocore.exceptions.BotoCoreError, botocore.exceptions.ClientError)):
             return _is_boto_error_temporary(e)
 
         if isinstance(e, pulsar.exceptions.PulsarException):
@@ -303,7 +305,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
 
         return False
 
-    def _runaction(self, action: Action, cat_changes: CatalogueChanges, failures: Failures):
+    def _runaction(self, action: Action, cat_changes: CatalogueChanges | None, failures: Failures) -> Failures | None:
         """
         Runs a single action. cat_changes is updated to add any catalogue changes we must publish
         as a result of them. failures is updated with any known failures.
@@ -311,11 +313,13 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         Exceptions may still be thrown due to bugs.
         """
         if isinstance(action, Messager.S3Action):
+            assert self.s3_client is not None
             bucket = action.bucket or self.output_bucket
             key = None
 
             try:
                 if isinstance(action, Messager.OutputFileAction):
+                    assert cat_changes is not None
                     key = self.cat_output_prefix + action.cat_path
 
                     if action.file_body is None:
@@ -326,10 +330,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
                             cat_changes.updated.append(key)
                         except botocore.exceptions.ClientError as e:
                             # The string "404" is seen with moto.
-                            if (
-                                e.response["Error"]["Code"] == "NoSuchKey"
-                                or e.response["Error"]["Code"] == "404"
-                            ):
+                            if e.response["Error"]["Code"] == "NoSuchKey" or e.response["Error"]["Code"] == "404":
                                 cat_changes.added.append(key)
                             else:
                                 raise
@@ -366,6 +367,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
             else:
                 failures.temporary = True
         elif isinstance(action, Messager.PulsarMessageAction):
+            assert self.producer is not None
             # Inject OpenTelemetry trace context into message properties
             properties: dict[str, str] = {}
             inject(properties)
@@ -373,9 +375,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
             # Send Pulsar message with trace context
             self.producer.send(action.payload, properties=properties)
 
-            logging.debug(
-                "Message sent to Pulsar: payload=%s properties=%s", action.payload, properties
-            )
+            logging.debug("Message sent to Pulsar: payload=%s properties=%s", action.payload, properties)
         else:
             raise AssertionError(f"BUG: Saw unknown action type {action}")
 
@@ -405,7 +405,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
                 change_message = self.gen_catalogue_message(msg, cat_changes)
                 data = json.dumps(change_message).encode("utf-8")
 
-                self._runaction(Messager.PulsarMessageAction(payload=data), None, failures)
+                self._runaction(Messager.PulsarMessageAction(payload=cast(OUTPUTMSGTYPE, data)), None, failures)
         except TemporaryFailure:
             logging.exception("Temporary failure processing message %s", msg)
             failures.temporary = True
@@ -424,7 +424,7 @@ class Messager[MSGTYPE, OUTPUTMSGTYPE](ABC):
         return failures
 
     @classmethod
-    def get_schema(cls) -> Optional[Schema]:
+    def get_schema(cls) -> Schema | None:
         """
         If this returns a non-None value then the consumer used to obtain messages for this
         Messager must be registered using the Schema this returns.
@@ -473,9 +473,9 @@ class CatalogueChangeMessager(Messager[Message, bytes], ABC):
 
         # Does anything need this? Maybe configure the logger with it?
         # id = input_change_msg.get("id")
-        input_bucket = input_change_msg.get("bucket_name")
-        source = input_change_msg.get("source")
-        target = input_change_msg.get("target")
+        input_bucket: str = input_change_msg["bucket_name"]
+        source: str = input_change_msg["source"]
+        target: str = input_change_msg["target"]
 
         all_actions: list[Messager.Action] = []
         for change_type in ("added_keys", "updated_keys", "deleted_keys"):
@@ -486,7 +486,7 @@ class CatalogueChangeMessager(Messager[Message, bytes], ABC):
                 # "<harvest-pipeline-component>/<catalogue-path>"
                 #
                 # These two pieces must be separated.
-                previous_step_prefix, cat_path = key.split("/", 1)
+                _previous_step_prefix, cat_path = key.split("/", 1)
 
                 try:
                     if change_type == "deleted_keys":
@@ -521,9 +521,7 @@ class CatalogueChangeMessager(Messager[Message, bytes], ABC):
                     all_actions.append(Messager.FailureAction(key=key, permanent=False))
                 except Exception as e:
                     logging.exception(f"Exception processing {key=}")
-                    all_actions.append(
-                        Messager.FailureAction(key=key, permanent=not self.is_temporary_error(e))
-                    )
+                    all_actions.append(Messager.FailureAction(key=key, permanent=not self.is_temporary_error(e)))
 
         return all_actions
 
@@ -545,6 +543,7 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
         source: str,
         target: str,
     ) -> Iterable[Messager.Action]:
+        assert self.s3_client is not None
         get_result = self.s3_client.get_object(Bucket=input_bucket, Key=input_key)
         entry_body = get_result["Body"].read()
 
@@ -560,7 +559,7 @@ class CatalogueChangeBodyMessager(CatalogueChangeMessager):
 
     @abstractmethod
     def process_update_body(
-        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
+        self, entry_body: dict | str, cat_path: str, source: str, target: str
     ) -> Iterable[CatalogueChangeMessager.Action]: ...
 
 
@@ -573,7 +572,7 @@ class CatalogueSTACChangeMessager(CatalogueChangeBodyMessager, ABC):
     """
 
     def process_update_body(
-        self, entry_body: Union[dict, str], cat_path: str, source: str, target: str
+        self, entry_body: dict | str, cat_path: str, source: str, target: str
     ) -> Iterable[CatalogueChangeMessager.Action]:
         if not isinstance(entry_body, dict) or "stac_version" not in entry_body:
             return []
@@ -605,14 +604,12 @@ class PulsarJSONMessager[PAYLOADOBJ: Record, OUTPAYLOADOBJ](Messager[Message, OU
         This returns a Pulsar Schema for the PAYLOADOBJ type. This is what Pulsar uses to convert
         the encoded message into a Python object.
         """
-        return eodhp_utils.pulsar.messages.get_schema_for_type_annotation(
-            cls, PulsarJSONMessager, 0
-        )
+        return eodhp_utils.pulsar.messages.get_schema_for_type_annotation(cls, PulsarJSONMessager, 0)
 
     @abstractmethod
     def process_payload(self, obj: PAYLOADOBJ) -> Iterable[Messager.Action]: ...
 
-    def gen_empty_catalogue_message(self, msg):
+    def gen_empty_catalogue_message(self, msg: Message) -> dict:
         # This is overridden due to a design flaw in Messagers: Messager assumes that all
         # messagers are catalogue messagers rather than components that interact with Pulsar
         # for other purposes.
