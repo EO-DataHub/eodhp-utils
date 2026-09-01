@@ -17,7 +17,7 @@ from opentelemetry.context import attach, detach
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanProcessor
 from opentelemetry.propagate import extract
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType, Message
 from pulsar.schema import BytesSchema
@@ -31,12 +31,22 @@ _component_name = "eodhp-utils"
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
 
+
+def _console_span_formatter(span: ReadableSpan) -> str:
+    """Formats a span as one line of JSON, with a `level` field Vector picks up as this entry's
+    severity: ERROR if the span recorded a failure, DEBUG otherwise. Spans are diagnostic trace
+    data rather than operational messages, so DEBUG is the right default."""
+    data = json.loads(span.to_json(indent=None))
+    data["level"] = "ERROR" if span.status.status_code == trace.StatusCode.ERROR else "DEBUG"
+    return json.dumps(data) + "\n"
+
+
 # --- Tracer Provider Setup ---
 current_provider = trace.get_tracer_provider()
 if not isinstance(current_provider, TracerProvider):
     provider = TracerProvider()
     provider.add_span_processor(BaggageSpanProcessor(ALLOW_ALL_BAGGAGE_KEYS))
-    provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter(formatter=_console_span_formatter)))
     trace.set_tracer_provider(provider)
 else:
     provider = current_provider
@@ -119,7 +129,7 @@ def setup_logging(verbosity: int = 0, enable_otel_logging: bool | None = None) -
         #  - Add OTel Baggage to the logs so that context is logged and searchable (filter)
         handler = logging.StreamHandler()
 
-        formatter = JsonFormatter()
+        formatter = JsonFormatter(fmt=["levelname", "message"], rename_fields={"levelname": "level"})
         handler.setFormatter(formatter)
 
         root_logger = logging.getLogger()
