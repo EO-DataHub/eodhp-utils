@@ -31,6 +31,7 @@ _component_name = "eodhp-utils"
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
 
+
 def _console_span_formatter(span: ReadableSpan) -> str:
     """Formats a span as one line of JSON, with a `level` field Vector picks up as this entry's
     severity: ERROR if the span recorded a failure, DEBUG otherwise. Spans are diagnostic trace
