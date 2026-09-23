@@ -47,6 +47,49 @@ from eodhp_utils.pulsar.messages import generate_harvest_schema
 print(generate_harvest_schema())
 ```
 
+## Pulsar configuration
+
+`eodhp_utils.runner.get_pulsar_client()` and the `Runner` read these environment variables:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `PULSAR_URL` | `pulsar://pulsar-broker.pulsar:6650` | Broker URL, used when none is passed in. |
+| `PULSAR_TOKEN_FILE` | unset | Path to a file containing a JWT, eg a mounted Secret. The file is read again on every new connection and every auth challenge, so a rotated Secret is picked up without a restart. |
+| `PULSAR_TOKEN` | unset | A JWT given directly. Ignored if `PULSAR_TOKEN_FILE` is set. |
+| `PULSAR_DEBUG_TOPIC` | `eodhp-utils-debugging` | Topic used for takeover messages. May be fully qualified, eg `persistent://public/billing/eodhp-utils-debugging`. |
+| `PULSAR_TAKEOVER_ENABLED` | `true` | Set to `false` to stop the Runner subscribing to the debug topic, so it can't be paused by takeover messages. Running in takeover mode still sends them. |
+| `PULSAR_DEAD_LETTER_TOPIC` | `dead-letter-<subscription name>` | Topic that messages are sent to after 3 redeliveries. May be fully qualified. |
+
+If neither token variable is set, no authentication is used. If `PULSAR_TOKEN_FILE` is set
+but the file is missing, unreadable or empty when the client is created, an exception is
+raised so the service fails at startup. If the file later becomes unreadable, an error is
+logged and an empty token is sent, which the broker rejects. The client then retries, reading
+the file again each time.
+
+Components that create their own `pulsar.Client` can use the same settings:
+
+```python
+import pulsar
+
+from eodhp_utils.runner import pulsar_authentication
+
+client = pulsar.Client(pulsar_url, authentication=pulsar_authentication())
+```
+
+Topics passed to the `Runner` may be short names (`billing-events`), `tenant/namespace/topic`
+or fully qualified (`persistent://public/billing/billing-events`). To read from an old and a
+new topic at the same time, pass the same Messager under both names:
+
+```python
+run(
+    {
+        "billing-events": messager,
+        "persistent://public/billing/billing-events": messager,
+    },
+    "billing-ingester",
+)
+```
+
 ## Install locally via makefile
 
 ```commandline

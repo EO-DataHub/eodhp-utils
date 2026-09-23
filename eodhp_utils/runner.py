@@ -2,6 +2,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -19,7 +20,15 @@ from opentelemetry.processor.baggage import ALLOW_ALL_BAGGAGE_KEYS, BaggageSpanP
 from opentelemetry.propagate import extract
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
-from pulsar import Client, Consumer, ConsumerDeadLetterPolicy, ConsumerType, Message
+from pulsar import (
+    Authentication,
+    AuthenticationToken,
+    Client,
+    Consumer,
+    ConsumerDeadLetterPolicy,
+    ConsumerType,
+    Message,
+)
 from pulsar.schema import BytesSchema
 from pythonjsonlogger.json import JsonFormatter
 
@@ -30,6 +39,8 @@ aws_client = None
 _component_name = "eodhp-utils"
 DEBUG_TOPIC = "eodhp-utils-debugging"
 SUSPEND_TIME = 5
+
+_PARTITION_SUFFIX = re.compile(r"-partition-\d+$")
 
 
 def _console_span_formatter(span: ReadableSpan) -> str:
@@ -57,14 +68,101 @@ else:
 tracer = trace.get_tracer(__name__)
 
 
+def _read_token_file(path: str) -> str:
+    with open(path, encoding="utf-8") as f:
+        return f.read().strip()
+
+
+def _token_file_supplier(path: str) -> Callable[[], str]:
+    def supplier() -> str:
+        # The Pulsar client calls this on every new connection and on every auth challenge from
+        # the broker, so a rotated token is picked up without a restart. It must not raise: an
+        # exception escaping into the C++ client during an auth challenge can abort the process.
+        # An empty token makes the broker reject the connection and the client retries later,
+        # reading the file again.
+        try:
+            token = _read_token_file(path)
+        except Exception as e:
+            logging.error(f"Could not read Pulsar token file {path}: {e}")
+            return ""
+
+        if not token:
+            logging.error(f"Pulsar token file {path} is empty")
+
+        return token
+
+    return supplier
+
+
+def pulsar_authentication() -> Authentication | None:
+    """
+    Returns the Pulsar authentication configured by the environment, for passing as
+    `authentication=` to `pulsar.Client`:
+
+      - PULSAR_TOKEN_FILE: path to a file holding a JWT. The file is read again every time the
+        client needs the token, so the mounted Secret can be rotated in place.
+      - PULSAR_TOKEN: the JWT itself. Ignored if PULSAR_TOKEN_FILE is set.
+      - Neither set: None, ie no authentication.
+
+    If PULSAR_TOKEN_FILE is set but the file can't be read or is empty then this raises, so a
+    misconfigured deployment fails at startup rather than with authentication errors later.
+    """
+    token_file = os.environ.get("PULSAR_TOKEN_FILE")
+    if token_file:
+        if not _read_token_file(token_file):
+            raise ValueError(f"Pulsar token file {token_file} is empty")
+
+        logging.info(f"Using Pulsar token authentication from {token_file}")
+        return AuthenticationToken(_token_file_supplier(token_file))
+
+    token = os.environ.get("PULSAR_TOKEN", "").strip()
+    if token:
+        logging.info("Using Pulsar token authentication from PULSAR_TOKEN")
+        return AuthenticationToken(token)
+
+    return None
+
+
 def get_pulsar_client(pulsar_url: str | None = None, message_listener_threads: int = 1) -> Client:
     global pulsar_client
     if pulsar_client is None:
         pulsar_url = pulsar_url or os.environ.get("PULSAR_URL", "pulsar://pulsar-broker.pulsar:6650")
         io_threads = int(message_listener_threads / 10) + 1
-        pulsar_client = Client(pulsar_url, message_listener_threads=message_listener_threads, io_threads=io_threads)
+        pulsar_client = Client(
+            pulsar_url,
+            message_listener_threads=message_listener_threads,
+            io_threads=io_threads,
+            authentication=pulsar_authentication(),
+        )
         logging.info(f"Connected to {pulsar_url} with {message_listener_threads=} " + f"and {io_threads=}")
     return pulsar_client
+
+
+def _qualify_topic_name(topic: str) -> str:
+    """
+    Returns the fully qualified form of a Pulsar topic name, as Pulsar itself resolves it:
+    'my-topic' is 'persistent://public/default/my-topic' and 'tenant/ns/my-topic' is
+    'persistent://tenant/ns/my-topic'. Fully qualified names and anything else are returned
+    unchanged.
+    """
+    if "://" in topic:
+        return topic
+
+    parts = topic.split("/")
+    if len(parts) == 1:
+        return f"persistent://public/default/{topic}"
+    if len(parts) == 3:
+        return f"persistent://{topic}"
+
+    return topic
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    if not value:
+        return default
+
+    return value not in ("false", "0", "no", "off")
 
 
 def get_boto3_session() -> boto3.session.Session:
@@ -185,16 +283,34 @@ def log_component_version(component_name: str) -> None:
 
 
 class Runner:
+    """
+    Consumes from each topic in `messagers` and passes the messages to that topic's Messager.
+
+    Topics may be given as short names ('billing-events'), as 'tenant/namespace/topic' or fully
+    qualified ('persistent://public/billing/billing-events'). To read from two topics during a
+    migration, pass the same Messager under both names.
+
+    These environment variables are read when the Runner is created:
+      - PULSAR_DEBUG_TOPIC: topic used for takeover messages, default DEBUG_TOPIC.
+      - PULSAR_TAKEOVER_ENABLED: set to false to skip subscribing to the debug topic, so this
+        Runner can't be paused by takeover messages. Default true.
+      - PULSAR_DEAD_LETTER_TOPIC: dead letter topic, default 'dead-letter-<subscription_name>'.
+    """
+
     messagers: dict[str, CatalogueChangeMessager]
     subscription_name: str
     takeover_mode: bool
     msg_limit: int | None
     pulsar_url: str | None
     threads: int
+    debug_topic: str
+    takeover_enabled: bool
+    dead_letter_topic: str
 
     _pulsar_client: Client
     _suspended_until: float
     _messager_consumers: list[Consumer]
+    _messagers_by_topic: dict[str, CatalogueChangeMessager]
 
     def __init__(
         self,
@@ -211,21 +327,46 @@ class Runner:
         self.msg_limit = msg_limit
         self.pulsar_url = pulsar_url
         self.threads = threads
+        self.debug_topic = os.environ.get("PULSAR_DEBUG_TOPIC") or DEBUG_TOPIC
+        self.takeover_enabled = _env_flag("PULSAR_TAKEOVER_ENABLED", True)
+        self.dead_letter_topic = os.environ.get("PULSAR_DEAD_LETTER_TOPIC") or f"dead-letter-{subscription_name}"
 
         self._pulsar_client = get_pulsar_client(pulsar_url=pulsar_url, message_listener_threads=threads)
         self._suspended_until = 0.0
         self._messager_consumers = []
+        self._messagers_by_topic = {_qualify_topic_name(topic): messager for topic, messager in messagers.items()}
 
         self._create_subscriptions()
+
+    @staticmethod
+    def _topic_matches(msg_topic: str, topic: str) -> bool:
+        """
+        True if a message from `msg_topic` (as reported by Pulsar, so fully qualified) belongs to
+        `topic` (as configured, in any form). A configured short name also matches on the last
+        path element alone, which is how this has always been matched.
+        """
+        return _qualify_topic_name(msg_topic) == _qualify_topic_name(topic) or (
+            "/" not in topic and msg_topic.rsplit("/", maxsplit=1)[-1] == topic
+        )
+
+    def _find_messager(self, msg_topic: str) -> CatalogueChangeMessager:
+        messager = self._messagers_by_topic.get(_qualify_topic_name(msg_topic))
+        if messager is None:
+            messager = self.messagers.get(msg_topic.rsplit("/", maxsplit=1)[-1])
+        if messager is None:
+            raise KeyError(f"No messager for topic {msg_topic}")
+
+        return messager
 
     def _listener(self, consumer: Consumer, msg: Message) -> None:
         """
         This is called asynchronously (there may be multiple threads) when a message is received.
         The message may be for any of our messagers or may be a 'takeover' message.
         """
-        topic_name = msg.topic_name().split("/")[-1]
+        # Messages from a partitioned topic report the partition as their topic.
+        topic_name = _PARTITION_SUFFIX.sub("", msg.topic_name())
 
-        if not self.takeover_mode and topic_name == DEBUG_TOPIC:
+        if self.takeover_enabled and not self.takeover_mode and self._topic_matches(topic_name, self.debug_topic):
             # We have received a takeover message and must stop processing normal messages.
             # This allows a dev runner on a developers machine to process all the messages
             # instead.
@@ -234,7 +375,7 @@ class Runner:
             self._process_messager_msg(topic_name, consumer, msg)
 
     def _process_messager_msg(self, topic_name: str, consumer: Consumer, msg: Message) -> None:
-        messager = self.messagers[topic_name]
+        messager = self._find_messager(topic_name)
 
         # Extract and activate OpenTelemetry trace context from Pulsar message
         incoming_properties = msg.properties()
@@ -299,7 +440,7 @@ class Runner:
                     consumer_type=ConsumerType.Shared,
                     dead_letter_policy=ConsumerDeadLetterPolicy(
                         max_redeliver_count=max_redelivery_count,
-                        dead_letter_topic=f"dead-letter-{self.subscription_name}",
+                        dead_letter_topic=self.dead_letter_topic,
                     ),
                     negative_ack_redelivery_delay_ms=delay_ms,
                     schema=cast(BytesSchema, messager.get_schema()),
@@ -317,7 +458,7 @@ class Runner:
         # can run a local copy of the service in takeover mode, resulting in this test copy receiving
         # messages instead of the copy in the cluster.
         #
-        # If we're not in takeover mode then:
+        # If we're not in takeover mode (and PULSAR_TAKEOVER_ENABLED isn't false) then:
         #  - We listen to an additional topic, the debug topic.
         #  - If we receive a takeover message on that topic with our subscription name listed then
         #    we stop receiving messages for SUSPEND_TIME milliseconds.
@@ -330,14 +471,14 @@ class Runner:
         takeover_msg = ""
         if self.takeover_mode:
             takeover_producer = self._pulsar_client.create_producer(
-                topic=DEBUG_TOPIC,
+                topic=self.debug_topic,
                 producer_name=f"{self.subscription_name}-takeover",
             )
 
             takeover_msg = json.dumps({"suspend_subscription": self.subscription_name})
-        else:
+        elif self.takeover_enabled:
             self._pulsar_client.subscribe(
-                topic=DEBUG_TOPIC,
+                topic=self.debug_topic,
                 subscription_name=self.subscription_name + "-takeover",
                 consumer_type=ConsumerType.Shared,
             )
